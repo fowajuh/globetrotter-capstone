@@ -1,0 +1,42 @@
+# Local dev: everything Stage 1 needs in one command.
+# `docker compose -f docker/docker-compose.yml up`
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: globetrotter
+      POSTGRES_PASSWORD: globetrotter
+      POSTGRES_DB: globetrotter
+    ports: ["5432:5432"]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U globetrotter"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports: ["4000:4000"]
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+volumes:
+  db-data:

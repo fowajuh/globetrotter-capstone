@@ -1,0 +1,7 @@
+{
+  "name": "@globetrotter/contracts",
+  "version": "1.0.0",
+  "description": "Zod schemas shared by backend, services, and frontend so DTOs cannot silently drift (§5 Stage 2).",
+  "main": "src/index.ts",
+  "dependencies": { "zod": "^3.23.8" }
+}
