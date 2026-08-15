@@ -14,3 +14,6 @@ coverage/
 prisma/dev.db
 generator/__pycache__/
 .pytest_cache/
+
+backend/.env
+
