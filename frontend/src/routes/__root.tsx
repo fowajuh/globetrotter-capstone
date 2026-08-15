@@ -209,6 +209,48 @@ function RootComponent() {
   const isFullScreen = isDetail || pathname.startsWith('/inbox/') || pathname === '/concierge';
 
   return (
+    function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const theme = useTheme((s) => s.theme);
+
+  useEffect(() => {
+    applyTheme(theme);
+    if (theme !== "system") return;
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applyTheme("system");
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [theme]);
+
+  const isPublicRoute = pathname === '/login' || pathname === '/onboarding';
+  const isDetail = pathname.includes('/stays/');
+  const isFullScreen = isDetail || pathname.startsWith('/inbox/') || pathname === '/concierge';
+
+  // BYPASS CLERK FOR BETA TESTING
+  // Set to false to re-enable Clerk later when you have a custom domain
+  const BYPASS_CLERK = true;
+
+  if (BYPASS_CLERK) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        {isPublicRoute ? (
+          <Outlet />
+        ) : (
+          <div className="flex flex-col min-h-screen">
+            {!isFullScreen && <SiteHeader />}
+            <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
+              <Outlet />
+            </div>
+            {!isFullScreen && <MobileNav />}
+          </div>
+        )}
+      </QueryClientProvider>
+    );
+  }
+
+  // Original Clerk code — disabled for now
+  return (
     <ClerkProvider publishableKey={PUBLISHABLE_KEY || ""} afterSignOutUrl="/">
       <QueryClientProvider client={queryClient}>
         {isPublicRoute ? (
