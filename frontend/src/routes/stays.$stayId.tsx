@@ -135,7 +135,13 @@ function StayDetail() {
 
         {/* ── Hero Gallery ── */}
         {/* One wrapper with explicit height. Mobile = absolute img. Desktop = grid. */}
-        <div className="w-full h-[260px] sm:h-[320px] md:h-[500px] rounded-xl overflow-hidden relative bg-muted">
+        {/* Height is set inline (not via h-[260px] sm:h-[320px] md:h-[500px]) so it can
+            never be dropped by the CSS build — this is what was letting the card grow
+            uncapped and fill the page. clamp() gives the same 260px→500px scaling. */}
+        <div
+          className="w-full rounded-xl overflow-hidden relative bg-muted"
+          style={{ height: "clamp(260px, 22vw + 200px, 500px)" }}
+        >
           {/* Mobile hero — absolute so it CANNOT expand past container */}
           <img
             src={listing.images[0]}
