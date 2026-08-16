@@ -2,18 +2,26 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 /**
- * Holds GlobeTrotter's OWN JWTs (from POST /auth/oauth/clerk), separate
- * from Clerk's session. Clerk answers "who is this person" on the client;
- * these tokens are what the NestJS API actually trusts on every request.
+ * Holds GlobeTrotter's own JWTs issued by the NestJS backend.
+ * These are the tokens the API trusts on every authenticated request.
  */
 type BackendAuthState = {
   accessToken: string | null;
   refreshToken: string | null;
-  /** Clerk user id these backend tokens were minted for. Lets the bridge
-   *  detect "different person signed in" vs "same person, just re-rendered". */
-  exchangedForClerkId: string | null;
+  /** DB user id returned by signup/login. */
+  userId: string | null;
+  /** Display name from signup/login. */
+  name: string | null;
+  /** Email from signup/login. */
+  email: string | null;
 
-  setTokens: (accessToken: string, refreshToken: string, clerkId: string) => void;
+  setTokens: (
+    accessToken: string,
+    refreshToken: string,
+    userId: string,
+    email: string,
+    name?: string | null,
+  ) => void;
   clear: () => void;
 };
 
@@ -22,10 +30,13 @@ export const useBackendAuth = create<BackendAuthState>()(
     (set) => ({
       accessToken: null,
       refreshToken: null,
-      exchangedForClerkId: null,
-      setTokens: (accessToken, refreshToken, clerkId) =>
-        set({ accessToken, refreshToken, exchangedForClerkId: clerkId }),
-      clear: () => set({ accessToken: null, refreshToken: null, exchangedForClerkId: null }),
+      userId: null,
+      name: null,
+      email: null,
+      setTokens: (accessToken, refreshToken, userId, email, name = null) =>
+        set({ accessToken, refreshToken, userId, email, name }),
+      clear: () =>
+        set({ accessToken: null, refreshToken: null, userId: null, name: null, email: null }),
     }),
     { name: "globetrotter-backend-auth" },
   ),

@@ -1,66 +1,21 @@
-import { useEffect, useRef, useState } from "react";
-import { useAuth } from "@clerk/clerk-react";
-import { api, ApiError } from "@/lib/api-client";
+/**
+ * With native JWT auth, there's no external identity provider to bridge.
+ * This hook simply exposes whether the user has an active backend session
+ * (i.e. an accessToken in the store) so __root.tsx can gate protected routes.
+ *
+ * The actual token management (signup/login/refresh/logout) happens in:
+ *   - login.tsx  → sets tokens via useBackendAuth.setTokens()
+ *   - api-client.ts → silently refreshes on 401
+ *   - settings.tsx / profile.tsx → clears tokens on logout
+ */
 import { useBackendAuth } from "@/lib/auth-store";
 
-type TokenPair = { accessToken: string; refreshToken: string };
-
-/**
- * Mount inside <SignedIn>. Clerk proves who the user is on the client;
- * this is what actually gets the backend to know they exist. On mount
- * (and whenever the signed-in Clerk user changes), it:
- *   1. grabs a Clerk session JWT via getToken()
- *   2. POSTs it to /auth/oauth/clerk
- *   3. stores the GlobeTrotter accessToken/refreshToken that comes back
- *
- * Everything under <SignedIn> should wait on `ready` before assuming
- * api-client calls will succeed — otherwise requests fire without a
- * backend token yet and 401 until the exchange finishes.
- */
 export function useBackendAuthBridge() {
-  const { userId, getToken, isSignedIn } = useAuth();
-  const { exchangedForClerkId, setTokens, clear } = useBackendAuth();
-  const [error, setError] = useState<Error | null>(null);
-  const exchanging = useRef(false);
-
-  const ready = isSignedIn && exchangedForClerkId === userId;
-
-  useEffect(() => {
-    if (!isSignedIn || !userId) {
-      clear();
-      return;
-    }
-    // Already exchanged for this exact Clerk user — nothing to do.
-    if (exchangedForClerkId === userId) return;
-    if (exchanging.current) return;
-
-    exchanging.current = true;
-    setError(null);
-
-    (async () => {
-      try {
-        const clerkToken = await getToken();
-        if (!clerkToken) throw new Error("Clerk returned no session token");
-
-        const tokens = await api.post<TokenPair>(
-          "/auth/oauth/clerk",
-          { token: clerkToken },
-          { unauthenticated: true },
-        );
-        setTokens(tokens.accessToken, tokens.refreshToken, userId);
-      } catch (e) {
-        const err = e instanceof ApiError
-          ? new Error(`Backend rejected Clerk session (${e.status}): ${JSON.stringify(e.body)}`)
-          : (e as Error);
-        console.error("Clerk -> backend token exchange failed:", err);
-        setError(err);
-      } finally {
-        exchanging.current = false;
-      }
-    })();
-  }, [isSignedIn, userId, exchangedForClerkId, getToken, setTokens, clear]);
-
-  return { ready, error };
+  const { accessToken } = useBackendAuth();
+  // "ready" means we have a token in the store. If the token is stale, the
+  // first authenticated API call will trigger a refresh via api-client.ts.
+  const ready = !!accessToken;
+  return { ready, error: null as Error | null };
 }
 
 /** Drop-in component form, for places that just want to trigger the bridge. */

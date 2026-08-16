@@ -8,7 +8,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto, SignupDto } from './dto/signup.dto';
-import { verifyToken, createClerkClient } from '@clerk/backend';
+
 
 function ttlToMs(ttl: string): number {
   const match = ttl.match(/^(\d+)([smhd])$/);
@@ -56,20 +56,7 @@ export class AuthService {
     return this.issueTokens(user.id, user.email);
   }
 
-  async loginWithClerk(token: string) {
-    try {
-      const verified = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
-      const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
-      const clerkUser = await clerk.users.getUser(verified.sub);
-      const email = clerkUser.emailAddresses[0]?.emailAddress;
-      const name = `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'User';
-      if (!email) throw new Error('No email found in Clerk user');
-      return this.issueForVerifiedIdentity(email, name);
-    } catch (e) {
-      console.error('Clerk login failed:', e);
-      throw new UnauthorizedException('invalid clerk token');
-    }
-  }
+
 
   async refresh(refreshToken: string) {
     let payload: { sub: string; email: string };
@@ -92,6 +79,13 @@ export class AuthService {
   async logout(userId: string, refreshToken: string) {
     const hash = createHash('sha256').update(refreshToken).digest('hex');
     await this.prisma.session.deleteMany({ where: { userId, refreshTokenHash: hash } });
+    return { ok: true };
+  }
+
+  /** Revoke a session by refresh-token hash alone (no userId required). */
+  async logoutByRefreshToken(refreshToken: string) {
+    const hash = createHash('sha256').update(refreshToken).digest('hex');
+    await this.prisma.session.deleteMany({ where: { refreshTokenHash: hash } });
     return { ok: true };
   }
 

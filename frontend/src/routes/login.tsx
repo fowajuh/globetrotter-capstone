@@ -1,7 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { useSignIn, useSignUp } from '@clerk/clerk-react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useBackendAuth } from '@/lib/auth-store';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api/v1";
 
 export const Route = createFileRoute('/login')({
   component: LoginScreen,
@@ -22,6 +24,13 @@ const LockIcon = ({ className }: { className?: string }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+
+const UserIcon = ({ className }: { className?: string }) => (
+  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
   </svg>
 );
 
@@ -47,33 +56,6 @@ const CheckIcon = () => (
   </svg>
 );
 
-const GoogleIcon = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18">
-    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-  </svg>
-);
-
-const FacebookIcon = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18">
-    <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-  </svg>
-);
-
-const XIcon = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18">
-    <path fill="#000" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-  </svg>
-);
-
-const AppleIcon = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18">
-    <path fill="#000" d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.22 7.13-.57 1.5-1.31 2.99-2.27 4.08zm-5.85-15.1c.07-2.04 1.76-3.79 3.78-3.94.29 2.32-1.93 4.48-3.78 3.94z" />
-  </svg>
-);
-
 /* ------------------------------------------------------------------ */
 /*  GlobeTrotter logo SVG (white version for dark panel)              */
 /* ------------------------------------------------------------------ */
@@ -92,63 +74,65 @@ function LoginScreen() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const { isLoaded: signInLoaded, signIn, setActive: setSignInActive } = useSignIn();
-  const { isLoaded: signUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
-  const isLoaded = signInLoaded && signUpLoaded;
+  const { setTokens } = useBackendAuth();
+  const navigate = useNavigate();
 
   /* -------------------- Handlers -------------------- */
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isLoaded) return;
     setIsLoading(true);
     setError('');
 
     try {
-      if (mode === 'signin') {
-        const result = await signIn.create({ identifier: email, password });
-        if (result.status === 'complete') {
-          await setSignInActive({ session: result.createdSessionId });
-        } else if (result.status === 'needs_second_factor') {
-          setError('Two-factor authentication is required.');
-        } else {
-          setError('Invalid email or password.');
-        }
-      } else {
-        const result = await signUp.create({ emailAddress: email, password });
-        if (result.status === 'complete') {
-          await setSignUpActive({ session: result.createdSessionId });
-        } else if (result.status === 'missing_requirements') {
-          if (result.unverifiedFields?.includes('email_address')) {
-            await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-            setError('A verification code was sent to your email.');
-          } else {
-            setError('Please complete all required fields.');
-          }
-        }
+      const endpoint = mode === 'signin' ? '/auth/login' : '/auth/signup';
+      const body = mode === 'signin'
+        ? { email, password }
+        : { email, password, name: name || email.split('@')[0] };
+
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const msg = (errData as any)?.message;
+        throw new Error(
+          Array.isArray(msg) ? msg[0]?.message ?? 'Invalid credentials' :
+          typeof msg === 'string' ? msg :
+          mode === 'signin' ? 'Invalid email or password.' : 'Could not create account.'
+        );
       }
+
+      const data = await res.json() as { accessToken: string; refreshToken: string; user?: { id: string; email: string; name?: string } };
+
+      // The backend /auth/signup and /auth/login return { accessToken, refreshToken }.
+      // We also need userId — decode it from the JWT sub claim (it's not secret data).
+      let userId = '';
+      let userName = name || '';
+      let userEmail = email;
+      try {
+        const parts = data.accessToken.split('.');
+        const payload = JSON.parse(atob(parts[1]));
+        userId = payload.sub ?? '';
+        userEmail = payload.email ?? email;
+      } catch {
+        userId = 'unknown';
+      }
+
+      setTokens(data.accessToken, data.refreshToken, userId, userEmail, userName || userEmail.split('@')[0]);
+      navigate({ to: '/' });
     } catch (err: any) {
-      setError(err.errors?.[0]?.message || 'Something went wrong. Please try again.');
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleOAuth = async (strategy: 'oauth_google' | 'oauth_facebook' | 'oauth_x' | 'oauth_apple') => {
-    if (!isLoaded) return;
-    try {
-      const auth = mode === 'signin' ? signIn : signUp;
-      await auth.authenticateWithRedirect({
-        strategy,
-        redirectUrl: '/sso-callback',
-        redirectUrlComplete: '/',
-      });
-    } catch {
-      setError('Social login failed. Please try again.');
     }
   };
 
@@ -310,6 +294,22 @@ function LoginScreen() {
 
               {/* Form */}
               <form onSubmit={handleSubmit} className="space-y-3.5">
+                {/* Name (signup only) */}
+                {mode === 'signup' && (
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                      <UserIcon />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full h-[52px] pl-11 pr-4 bg-[#f5f5f5] rounded-xl text-[14px] text-[#111] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 transition-all"
+                    />
+                  </div>
+                )}
+
                 {/* Email */}
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
@@ -337,6 +337,7 @@ function LoginScreen() {
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full h-[52px] pl-11 pr-11 bg-[#f5f5f5] rounded-xl text-[14px] text-[#111] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 transition-all"
                     required
+                    minLength={8}
                   />
                   <button
                     type="button"
@@ -346,18 +347,6 @@ function LoginScreen() {
                     {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                   </button>
                 </div>
-
-                {/* Forgot password */}
-                {mode === 'signin' && (
-                  <div className="flex justify-start -mt-0.5">
-                    <button
-                      type="button"
-                      className="text-[12px] text-[#111] font-medium hover:underline underline-offset-2"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                )}
 
                 {/* Error */}
                 {error && (
@@ -373,27 +362,12 @@ function LoginScreen() {
                 {/* Submit */}
                 <button
                   type="submit"
-                  disabled={isLoading || !isLoaded}
+                  disabled={isLoading}
                   className="w-full h-[52px] bg-black text-white rounded-full text-[15px] font-semibold hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-1"
                 >
                   {isLoading ? 'Please wait…' : mode === 'signin' ? 'Login' : 'Sign up'}
                 </button>
               </form>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3 my-6">
-                <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">or</span>
-                <div className="h-px flex-1 bg-gray-200" />
-              </div>
-
-              {/* Social buttons */}
-              <div className="space-y-2.5">
-                <SocialButton icon={<GoogleIcon />} label="Continue with Google" onClick={() => handleOAuth('oauth_google')} />
-                <SocialButton icon={<FacebookIcon />} label="Continue with Facebook" onClick={() => handleOAuth('oauth_facebook')} />
-                <SocialButton icon={<XIcon />} label="Continue with X" onClick={() => handleOAuth('oauth_x')} />
-                <SocialButton icon={<AppleIcon />} label="Continue with Apple" onClick={() => handleOAuth('oauth_apple')} />
-              </div>
             </motion.div>
           </AnimatePresence>
 
@@ -407,30 +381,5 @@ function LoginScreen() {
         </motion.div>
       </div>
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Social button helper                                              */
-/* ------------------------------------------------------------------ */
-
-function SocialButton({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full h-11 flex items-center gap-3 px-4 bg-[#f5f5f5] rounded-full hover:bg-gray-200 active:scale-[0.98] transition-all"
-    >
-      <span className="shrink-0">{icon}</span>
-      <span className="text-[13px] font-semibold text-[#111]">{label}</span>
-    </button>
   );
 }

@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Post, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshDto, SignupDto } from './dto/signup.dto';
-import { ClerkDto } from './dto/clerk.dto';
+
 @Controller('auth')
 export class AuthController {
   constructor(private auth: AuthService) {}
@@ -29,11 +29,12 @@ export class AuthController {
     return this.auth.refresh(parsed.data.refreshToken);
   }
 
-  @Post('oauth/clerk')
+  @Post('logout')
   @HttpCode(200)
-  async clerkLogin(@Body() body: unknown) {
-    const parsed = ClerkDto.safeParse(body);
-    if (!parsed.success) throw new UnauthorizedException(parsed.error.issues);
-    return this.auth.loginWithClerk(parsed.data.token);
+  async logout(@Body() body: unknown) {
+    const parsed = RefreshDto.safeParse(body);
+    // Best-effort: if no valid refresh token sent, just return ok
+    if (!parsed.success) return { ok: true };
+    return this.auth.logoutByRefreshToken(parsed.data.refreshToken);
   }
 }

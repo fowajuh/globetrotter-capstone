@@ -21,8 +21,8 @@ let refreshPromise: Promise<boolean> | null = null;
 
 /** Exchanges the stored refresh token for a new access/refresh pair. */
 async function tryRefresh(): Promise<boolean> {
-  const { refreshToken, exchangedForClerkId, setTokens, clear } = useBackendAuth.getState();
-  if (!refreshToken || !exchangedForClerkId) return false;
+  const { refreshToken, userId, setTokens, clear, email, name } = useBackendAuth.getState();
+  if (!refreshToken || !userId) return false;
 
   const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: "POST",
@@ -36,14 +36,14 @@ async function tryRefresh(): Promise<boolean> {
   }
 
   const data = (await res.json()) as { accessToken: string; refreshToken: string };
-  setTokens(data.accessToken, data.refreshToken, exchangedForClerkId);
+  setTokens(data.accessToken, data.refreshToken, userId, email ?? "", name);
   return true;
 }
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
-  /** Skip attaching a bearer token (e.g. the clerk-exchange call itself). */
+  /** Skip attaching a bearer token (e.g. signup/login calls themselves). */
   unauthenticated?: boolean;
 };
 

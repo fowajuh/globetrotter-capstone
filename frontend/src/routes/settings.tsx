@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import {
@@ -6,7 +6,8 @@ import {
   Smartphone, Moon, HelpCircle, LogOut, Star, Languages, Eye,
   MessageSquare, Lock, Trash2, ChevronDown, AlertTriangle
 } from "lucide-react";
-import { useClerk } from "@clerk/clerk-react";
+import { useBackendAuth } from "@/lib/auth-store";
+import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/lib/theme-store";
@@ -29,12 +30,24 @@ type SettingSection = {
 };
 
 function SettingsPage() {
-  const { signOut } = useClerk();
+  const { refreshToken, clear } = useBackendAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState(true);
   const { theme, setTheme } = useTheme();
   const darkMode = theme === "dark";
   const [biometric, setBiometric] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  const signOut = async () => {
+    try {
+      if (refreshToken) {
+        await api.post('/auth/logout', { refreshToken }, { unauthenticated: true });
+      }
+    } catch { /* best effort */ } finally {
+      clear();
+      navigate({ to: '/login' });
+    }
+  };
 
   const sections: SettingSection[] = [
     {

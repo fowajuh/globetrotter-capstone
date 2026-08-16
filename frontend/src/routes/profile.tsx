@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useUser, UserProfile, SignOutButton } from "@clerk/clerk-react";
-import { useEffect, useState } from "react";
+import { useBackendAuth } from "@/lib/auth-store";
+import { api } from "@/lib/api-client";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Shield, CheckCircle2, ChevronRight, Settings, CreditCard, Bell, HelpCircle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,27 +12,26 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfileScreen() {
-  const { user, isLoaded, isSignedIn } = useUser();
+  const { accessToken, userId, name, email, refreshToken, clear } = useBackendAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"profile" | "account">("profile");
   const { myTrips } = useTravel();
 
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      navigate({ to: "/login" });
+  const handleLogout = async () => {
+    try {
+      if (refreshToken) {
+        await api.post('/auth/logout', { refreshToken }, { unauthenticated: true });
+      }
+    } catch { /* best effort */ } finally {
+      clear();
+      navigate({ to: '/login' });
     }
-  }, [isLoaded, isSignedIn, navigate]);
+  };
 
-  if (!isLoaded || !isSignedIn) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="h-16 w-16 bg-muted rounded-full mb-4"></div>
-          <div className="h-4 w-32 bg-muted rounded mb-2"></div>
-        </div>
-      </div>
-    );
-  }
+  // Derive display info from store
+  const displayName = name || email?.split('@')[0] || 'Traveler';
+  const firstName = displayName.split(' ')[0];
+  const initials = displayName.split(' ').map((p: string) => p[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -64,18 +64,16 @@ function ProfileScreen() {
             {/* Avatar Header */}
             <section className="flex flex-col md:flex-row gap-8 items-center md:items-start text-center md:text-left">
               <div className="relative">
-                <img 
-                  src={user.imageUrl} 
-                  alt={user.fullName || "User"} 
-                  className="w-32 h-32 rounded-full object-cover border-4 border-background shadow-lg" 
-                />
+                <div className="w-32 h-32 rounded-full border-4 border-background shadow-lg bg-gradient-to-br from-indigo-500 to-teal-400 flex items-center justify-center">
+                  <span className="text-white text-4xl font-bold">{initials}</span>
+                </div>
                 <div className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow-md border border-gray-100">
                   <CheckCircle2 className="w-6 h-6 text-green-500" />
                 </div>
               </div>
               
               <div className="flex-1 mt-2">
-                <h2 className="text-3xl font-bold mb-1">{user.fullName || "Traveler"}</h2>
+                <h2 className="text-3xl font-bold mb-1">{displayName}</h2>
                 <p className="text-muted-foreground">Joined in 2025</p>
                 
                 <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-4">
@@ -104,7 +102,7 @@ function ProfileScreen() {
                   <Shield className="w-6 h-6 text-green-600" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg mb-1">{user.firstName}'s confirmed information</h3>
+                  <h3 className="font-bold text-lg mb-1">{firstName}'s confirmed information</h3>
                   <div className="space-y-3 mt-4">
                     <div className="flex items-center gap-3">
                       <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -127,7 +125,7 @@ function ProfileScreen() {
 
             {/* About */}
             <section>
-              <h3 className="font-bold text-xl mb-4">About {user.firstName}</h3>
+              <h3 className="font-bold text-xl mb-4">About {firstName}</h3>
               <p className="text-muted-foreground leading-relaxed">
                 Avid traveler looking for unique experiences. I love exploring off-the-beaten-path locations, trying local cuisine, and meeting new people.
               </p>
@@ -172,27 +170,18 @@ function ProfileScreen() {
 
             <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
               <div className="p-4">
-                <UserProfile 
-                  routing="hash" 
-                  appearance={{
-                    elements: {
-                      rootBox: "w-full mx-auto",
-                      card: "shadow-none border-none p-0 bg-transparent",
-                      headerTitle: "hidden",
-                      headerSubtitle: "hidden",
-                      navbar: "hidden",
-                    }
-                  }} 
-                />
+                <p className="text-sm text-muted-foreground">Account management coming soon.</p>
+                <p className="text-sm text-muted-foreground mt-1">Email: <span className="font-medium text-foreground">{email}</span></p>
               </div>
             </div>
 
             <div className="pt-4 pb-8 flex justify-center">
-              <SignOutButton>
-                <Button variant="outline" className="text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300 w-full md:w-auto px-8 gap-2">
-                  <LogOut className="w-4 h-4" /> Log out
-                </Button>
-              </SignOutButton>
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 text-red-500 border border-red-200 hover:bg-red-50 hover:border-red-300 px-8 py-2 rounded-md text-sm font-medium transition-colors"
+              >
+                <LogOut className="w-4 h-4" /> Log out
+              </button>
             </div>
             
           </motion.div>

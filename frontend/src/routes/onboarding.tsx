@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { ArrowRight } from "lucide-react";
 import { Globe } from "@/components/manifest/Globe";
 import { useUI } from "@/lib/store";
-import { SignUp, useUser } from "@clerk/clerk-react";
+import { useBackendAuth } from "@/lib/auth-store";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -163,7 +163,12 @@ function Onboarding() {
                 <h1 className="font-display text-3xl md:text-4xl leading-[0.95] mb-8 text-center">
                   Secure your manifest
                 </h1>
-                <SignUp fallbackRedirectUrl="/" signInFallbackRedirectUrl="/" routing="hash" />
+                <button
+                  onClick={() => navigate({ to: '/login' })}
+                  className="bg-beacon-amber text-departure-navy px-8 py-3 rounded-full font-semibold mt-4 hover:opacity-90 transition-opacity"
+                >
+                  Sign up / Log in
+                </button>
               </motion.div>
             )}
           </AnimatePresence>

@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { UserButton, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
+import { useBackendAuth } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +9,7 @@ export function SiteHeader() {
   
   // Show minimal header on detail pages if needed, but a unified one is better for standard navigation
   const isDetail = pathname.includes("/stays/");
+  const { accessToken, name } = useBackendAuth();
   
   return (
     <header className={cn(
@@ -53,29 +54,22 @@ export function SiteHeader() {
             <Link to="/profile" className="hover:text-primary transition-colors">Profile</Link>
           </nav>
 
-          <SignedIn>
-            <div className="border border-border p-1 pl-3 pr-1 rounded-full flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer bg-background">
+          {accessToken ? (
+            <Link to="/profile" className="border border-border p-1 pl-3 pr-1 rounded-full flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer bg-background">
               <div className="flex flex-col gap-[3px]">
                 <span className="w-4 h-[1.5px] bg-foreground" />
                 <span className="w-4 h-[1.5px] bg-foreground" />
                 <span className="w-4 h-[1.5px] bg-foreground" />
               </div>
-              <UserButton 
-                appearance={{
-                  elements: {
-                    avatarBox: "w-8 h-8",
-                    userButtonPopoverCard: "shadow-modal rounded-xl border-border z-[100]"
-                  }
-                }} 
-              />
-            </div>
-          </SignedIn>
-          
-          <SignedOut>
-            <SignInButton mode="modal">
+              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold">
+                {name ? name[0].toUpperCase() : 'U'}
+              </div>
+            </Link>
+          ) : (
+            <Link to="/login">
               <Button>Log in</Button>
-            </SignInButton>
-          </SignedOut>
+            </Link>
+          )}
         </div>
 
       </div>

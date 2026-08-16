@@ -6,18 +6,17 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  Navigate,
+  useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { themeInitScript, useTheme, applyTheme } from "../lib/theme-store";
-
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!PUBLISHABLE_KEY) {
-  console.warn("Missing Publishable Key for Clerk");
-}
+import { useBackendAuth } from "../lib/auth-store";
+import { SiteHeader } from "@/components/layout/SiteHeader";
+import { MobileNav } from "@/components/layout/MobileNav";
 
 function NotFoundComponent() {
   return (
@@ -134,62 +133,16 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-import { ClerkProvider, ClerkLoading, ClerkLoaded, SignedIn, SignedOut } from "@clerk/clerk-react";
-import { useRouterState, Navigate } from "@tanstack/react-router";
-import { SiteHeader } from "@/components/layout/SiteHeader";
-import { MobileNav } from "@/components/layout/MobileNav";
-import { useBackendAuthBridge } from "@/components/auth/BackendAuthBridge";
+function AuthGate({ children }: { children: ReactNode }) {
+  const { accessToken } = useBackendAuth();
 
-function BackendSessionGate({ children }: { children: ReactNode }) {
-  const { ready, error } = useBackendAuthBridge();
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="max-w-md text-center">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Couldn't connect to GlobeTrotter's servers
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            You're signed in, but the API rejected the session. This usually means the backend
-            isn't running, CORS is blocking it, or CLERK_SECRET_KEY on the backend doesn't match
-            this app's Clerk instance.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-muted border-t-accent animate-spin" />
-          <p className="text-sm text-muted-foreground">Connecting your account…</p>
-        </div>
-      </div>
-    );
+  if (!accessToken) {
+    return <Navigate to="/login" />;
   }
 
   return <>{children}</>;
 }
 
-function AuthGateLoading() {
-  // Shown while Clerk is still resolving the session. Without this,
-  // <SignedIn>/<SignedOut> both render nothing and the page looks empty
-  // for however long the Clerk script/network call takes.
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-muted border-t-accent animate-spin" />
-        <p className="text-sm text-muted-foreground">Loading GlobeTrotter…</p>
-      </div>
-    </div>
-  );
-}
-
-// Clerk is bypassed for beta testing so the app loads without auth walls.
-// All Clerk imports and helpers above are preserved for re-enablement later.
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -206,22 +159,24 @@ function RootComponent() {
     return () => mql.removeEventListener("change", onChange);
   }, [theme]);
 
-  const isPublicRoute = pathname === '/login' || pathname === '/onboarding';
-  const isDetail = pathname.includes('/stays/');
-  const isFullScreen = isDetail || pathname.startsWith('/inbox/') || pathname === '/concierge';
+  const isPublicRoute = pathname === "/login" || pathname === "/onboarding";
+  const isDetail = pathname.includes("/stays/");
+  const isFullScreen = isDetail || pathname.startsWith("/inbox/") || pathname === "/concierge";
 
   return (
     <QueryClientProvider client={queryClient}>
       {isPublicRoute ? (
         <Outlet />
       ) : (
-        <div className="flex flex-col min-h-screen">
-          {!isFullScreen && <SiteHeader />}
-          <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
-            <Outlet />
+        <AuthGate>
+          <div className="flex flex-col min-h-screen">
+            {!isFullScreen && <SiteHeader />}
+            <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
+              <Outlet />
+            </div>
+            {!isFullScreen && <MobileNav />}
           </div>
-          {!isFullScreen && <MobileNav />}
-        </div>
+        </AuthGate>
       )}
     </QueryClientProvider>
   );

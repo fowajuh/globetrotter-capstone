@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useUser } from "@clerk/clerk-react";
+import { useBackendAuth } from "@/lib/auth-store";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { messagesApi } from "@/lib/api/messages";
@@ -23,7 +23,8 @@ function timeAgo(iso: string) {
 }
 
 function InboxScreen() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { accessToken } = useBackendAuth();
+  const isSignedIn = !!accessToken;
   const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
