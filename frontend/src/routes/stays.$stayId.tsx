@@ -133,32 +133,43 @@ function StayDetail() {
           <span className="text-muted-foreground">{listing.city}, {listing.region}, Cameroon</span>
         </div>
 
-        {/* ── Hero Gallery ── Single SSR-safe responsive grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 md:grid-rows-2 gap-2 h-[260px] sm:h-[320px] md:h-[500px] rounded-xl overflow-hidden relative">
-          <div className="col-span-1 md:col-span-1 lg:col-span-2 row-span-1 md:row-span-2 overflow-hidden">
-            <img
-              src={listing.images[0]}
-              alt="Main"
-              className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
-            />
-          </div>
-          <div className="hidden md:block overflow-hidden">
-            <img src={listing.images[1]} alt="Preview 1" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
-          </div>
-          <div className="hidden lg:block overflow-hidden">
-            <img src={listing.images[2]} alt="Preview 2" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
-          </div>
-          <div className="hidden md:block overflow-hidden">
-            <img src={listing.images[3] || listing.images[1]} alt="Preview 3" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
-          </div>
-          <div className="hidden lg:block overflow-hidden">
-            <img src={listing.images[0]} alt="Preview 4" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
+        {/* ── Hero Gallery ── */}
+        {/* One wrapper with explicit height. Mobile = absolute img. Desktop = grid. */}
+        <div className="w-full h-[260px] sm:h-[320px] md:h-[500px] rounded-xl overflow-hidden relative bg-muted">
+          {/* Mobile hero — absolute so it CANNOT expand past container */}
+          <img
+            src={listing.images[0]}
+            alt={listing.title}
+            className="absolute inset-0 w-full h-full object-cover md:hidden"
+          />
+
+          {/* Desktop grid — fills the wrapper entirely */}
+          <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 grid-rows-2 gap-2 w-full h-full">
+            <div className="md:col-span-1 lg:col-span-2 row-span-2 overflow-hidden">
+              <img
+                src={listing.images[0]}
+                alt="Main"
+                className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
+              />
+            </div>
+            <div className="overflow-hidden">
+              <img src={listing.images[1]} alt="Preview 1" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
+            </div>
+            <div className="hidden lg:block overflow-hidden">
+              <img src={listing.images[2]} alt="Preview 2" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
+            </div>
+            <div className="overflow-hidden">
+              <img src={listing.images[3] || listing.images[1]} alt="Preview 3" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
+            </div>
+            <div className="hidden lg:block overflow-hidden">
+              <img src={listing.images[0]} alt="Preview 4" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
+            </div>
           </div>
 
           <Button
             variant="secondary"
             onClick={() => { setGalleryIndex(0); setIsGalleryOpen(true); }}
-            className="absolute bottom-4 right-4 shadow-card hidden md:flex"
+            className="absolute bottom-4 right-4 shadow-card hidden md:inline-flex"
           >
             View all photos
           </Button>
