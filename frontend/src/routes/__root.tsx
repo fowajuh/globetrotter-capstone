@@ -122,8 +122,6 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
-        {/* Applies the saved/system theme before first paint so there's no
-            light-flash for users who prefer dark mode. */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
@@ -175,9 +173,6 @@ function BackendSessionGate({ children }: { children: ReactNode }) {
 }
 
 function AuthGateLoading() {
-  // Shown while Clerk is still resolving the session. Without this,
-  // <SignedIn>/<SignedOut> both render nothing and the page looks empty
-  // for however long the Clerk script/network call takes.
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
@@ -188,15 +183,11 @@ function AuthGateLoading() {
   );
 }
 
-// Clerk is bypassed for beta testing so the app loads without auth walls.
-// All Clerk imports and helpers above are preserved for re-enablement later.
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const theme = useTheme((s) => s.theme);
 
-  // Keep the applied theme correct if the user's OS preference changes
-  // while "system" is selected, and re-apply on route/theme changes.
   useEffect(() => {
     applyTheme(theme);
     if (theme !== "system") return;
