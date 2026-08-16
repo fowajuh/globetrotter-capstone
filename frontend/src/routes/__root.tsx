@@ -188,6 +188,8 @@ function AuthGateLoading() {
   );
 }
 
+// Clerk is bypassed for beta testing so the app loads without auth walls.
+// All Clerk imports and helpers above are preserved for re-enablement later.
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -209,32 +211,18 @@ function RootComponent() {
   const isFullScreen = isDetail || pathname.startsWith('/inbox/') || pathname === '/concierge';
 
   return (
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY || ""} afterSignOutUrl="/">
-      <QueryClientProvider client={queryClient}>
-        {isPublicRoute ? (
-          <Outlet />
-        ) : (
-          <div className="flex flex-col min-h-screen">
-            <ClerkLoading>
-              <AuthGateLoading />
-            </ClerkLoading>
-            <ClerkLoaded>
-              <SignedIn>
-                <BackendSessionGate>
-                  {!isFullScreen && <SiteHeader />}
-                  <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
-                    <Outlet />
-                  </div>
-                  {!isFullScreen && <MobileNav />}
-                </BackendSessionGate>
-              </SignedIn>
-              <SignedOut>
-                <Navigate to="/login" />
-              </SignedOut>
-            </ClerkLoaded>
+    <QueryClientProvider client={queryClient}>
+      {isPublicRoute ? (
+        <Outlet />
+      ) : (
+        <div className="flex flex-col min-h-screen">
+          {!isFullScreen && <SiteHeader />}
+          <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
+            <Outlet />
           </div>
-        )}
-      </QueryClientProvider>
-    </ClerkProvider>
+          {!isFullScreen && <MobileNav />}
+        </div>
+      )}
+    </QueryClientProvider>
   );
 }
