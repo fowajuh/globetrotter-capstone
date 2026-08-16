@@ -78,9 +78,6 @@ function StayDetail() {
     navigate({ to: "/checkout/$stayId", params: { stayId: listing.id } });
   };
 
-  // "Message Host" used to hardcode a link to a fake chat-1 thread
-  // regardless of which listing you were on. This finds-or-creates the
-  // real thread for this specific listing/host and opens it.
   const messageHostMutation = useMutation({
     mutationFn: () =>
       messagesApi.startConversation({
@@ -93,9 +90,6 @@ function StayDetail() {
       navigate({ to: "/inbox/$chatId", params: { chatId: conversation.id } });
     },
     onError: (err) => {
-      // Previously failed completely silently — the button just did
-      // nothing, with the actual cause (401, network error, validation
-      // error, etc.) only visible in the browser console/network tab.
       console.error("Failed to start conversation with host:", err);
     },
   });
@@ -108,7 +102,7 @@ function StayDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-32 lg:pb-20">
       {/* Minimal Header */}
       <div className="py-4">
         <div className="max-w-screen-xl mx-auto px-4 sm:px-6 flex justify-between items-center">
@@ -139,46 +133,24 @@ function StayDetail() {
           <span className="text-muted-foreground">{listing.city}, {listing.region}, Cameroon</span>
         </div>
 
-        {/* ── Hero Gallery ──────────────────────────────────────────────── */}
-        {/* MOBILE: single image, explicit height, overflow clipped.
-            Using a separate element (not the grid) so there is zero
-            dependency on CSS-grid row-track resolution on small screens. */}
-        <div className="md:hidden w-full h-[260px] sm:h-[320px] rounded-xl overflow-hidden">
-          <img
-            src={listing.images[0]}
-            alt={listing.title}
-            className="w-full h-full object-cover"
-          />
-        </div>
-
-        {/* DESKTOP (md+): proper grid.
-            `grid-rows-2` is the critical addition: it tells CSS Grid to
-            split the explicit h-[500px] into two 1fr tracks (≈250px each),
-            so `row-span-2` on the hero image resolves to 500px instead of
-            the image's intrinsic height. Without this the implicit-auto
-            tracks grow to fit content and the container height is ignored. */}
-        <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 grid-rows-2 gap-2 h-[500px] rounded-xl overflow-hidden relative">
-          {/* Hero: spans full height on both 2-col (md) and 4-col (lg) */}
-          <div className="md:col-span-1 lg:col-span-2 row-span-2 overflow-hidden">
+        {/* ── Hero Gallery ── Single SSR-safe responsive grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 md:grid-rows-2 gap-2 h-[260px] sm:h-[320px] md:h-[500px] rounded-xl overflow-hidden relative">
+          <div className="col-span-1 md:col-span-1 lg:col-span-2 row-span-1 md:row-span-2 overflow-hidden">
             <img
               src={listing.images[0]}
               alt="Main"
               className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
             />
           </div>
-          {/* Top-right */}
-          <div className="overflow-hidden">
+          <div className="hidden md:block overflow-hidden">
             <img src={listing.images[1]} alt="Preview 1" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
           </div>
-          {/* Top-far-right (lg only) */}
           <div className="hidden lg:block overflow-hidden">
             <img src={listing.images[2]} alt="Preview 2" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
           </div>
-          {/* Bottom-right */}
-          <div className="overflow-hidden">
+          <div className="hidden md:block overflow-hidden">
             <img src={listing.images[3] || listing.images[1]} alt="Preview 3" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
           </div>
-          {/* Bottom-far-right (lg only) */}
           <div className="hidden lg:block overflow-hidden">
             <img src={listing.images[0]} alt="Preview 4" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
           </div>
@@ -186,14 +158,75 @@ function StayDetail() {
           <Button
             variant="secondary"
             onClick={() => { setGalleryIndex(0); setIsGalleryOpen(true); }}
-            className="absolute bottom-4 right-4 shadow-card"
+            className="absolute bottom-4 right-4 shadow-card hidden md:flex"
           >
             View all photos
           </Button>
         </div>
+
         <div className="flex flex-col lg:flex-row gap-12 mt-12">
           {/* Left Column 60% */}
           <div className="lg:w-[60%]">
+
+            {/* Mobile booking card — inline, scrollable */}
+            <div className="lg:hidden mb-8">
+              <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-2xl font-bold">${listing.usd}</span>
+                  <span className="text-muted-foreground">night</span>
+                </div>
+
+                <div className="border border-border rounded-lg mb-4">
+                  <button
+                    type="button"
+                    onClick={() => { setIsDatesOpen((v) => !v); setIsGuestsOpen(false); }}
+                    className="flex w-full border-b border-border text-left"
+                  >
+                    <div className="flex-1 p-3 border-r border-border">
+                      <div className="text-[10px] font-bold uppercase tracking-wide">Check-in</div>
+                      <div className="text-sm mt-1 text-foreground">{formatDatePretty(checkin)}</div>
+                    </div>
+                    <div className="flex-1 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wide">Checkout</div>
+                      <div className="text-sm mt-1 text-foreground">{formatDatePretty(checkout)}</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsGuestsOpen((v) => !v); setIsDatesOpen(false); }}
+                    className="w-full text-left p-3"
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wide">Guests</div>
+                    <div className="text-sm mt-1 text-foreground">{guests} guest{guests > 1 ? "s" : ""}</div>
+                  </button>
+                </div>
+
+                <Button onClick={handleReserve} className="w-full h-12 text-base font-semibold">
+                  Reserve
+                </Button>
+                <p className="text-center text-sm text-muted-foreground mt-2">You won't be charged yet</p>
+
+                <div className="mt-4 pt-4 border-t border-border space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">${listing.usd} × {nights} night{nights > 1 ? "s" : ""}</span>
+                    <span>${listing.usd * nights}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cleaning fee</span>
+                    <span>$45</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Service fee</span>
+                    <span>${Math.round(listing.usd * nights * 0.14)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-base pt-2 border-t border-border">
+                    <span>Total</span>
+                    <span>${listing.usd * nights + 45 + Math.round(listing.usd * nights * 0.14)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-between items-start pb-6 border-b border-border">
               <div>
                 <h2 className="text-h2 mb-1">Entire place hosted by {listing.host.name}</h2>
@@ -404,7 +437,7 @@ function StayDetail() {
                 Reserve
               </Button>
               <p className="text-center text-sm text-muted-foreground mt-3">You won't be charged yet</p>
-              
+
               <button
                 onClick={handleMessageHost}
                 disabled={messageHostMutation.isPending}
@@ -444,32 +477,19 @@ function StayDetail() {
         </div>
       </main>
 
-
-      {/* Mobile Sticky Booking Bar */}
+      {/* Mobile Sticky Footer — just price + Reserve */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border z-40">
-        <div className="flex justify-between items-center p-4 pb-2">
+        <div className="flex justify-between items-center p-4">
           <div>
             <div className="flex items-baseline gap-1">
-              <span className="font-bold text-lg underline">${listing.usd}</span>
+              <span className="font-bold text-lg">${listing.usd}</span>
               <span className="text-sm text-muted-foreground">night</span>
             </div>
-            <p className="text-xs text-muted-foreground">{formatDatePretty(checkin)} – {formatDatePretty(checkout)} · Free cancellation</p>
+            <p className="text-xs text-muted-foreground">{formatDatePretty(checkin)} – {formatDatePretty(checkout)}</p>
           </div>
-          <Button onClick={handleReserve} className="px-7 py-6 rounded-2xl font-bold bg-gradient-to-r from-primary to-rose-500 text-white text-base">
+          <Button onClick={handleReserve} className="px-8 py-5 rounded-xl font-bold bg-gradient-to-r from-primary to-rose-500 text-white text-base">
             Reserve
           </Button>
-        </div>
-        <div className="flex gap-2 px-4 pb-4">
-          <button
-            onClick={handleMessageHost}
-            disabled={messageHostMutation.isPending}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-60"
-          >
-            <MessageSquare className="w-4 h-4" /> {messageHostMutation.isPending ? "Opening…" : "Message Host"}
-          </button>
-          <Link to="/concierge" className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted text-primary transition-colors">
-            <Sparkles className="w-4 h-4" /> AI Concierge
-          </Link>
         </div>
       </div>
 
