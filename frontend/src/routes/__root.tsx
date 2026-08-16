@@ -122,6 +122,8 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        {/* Applies the saved/system theme before first paint so there's no
+            light-flash for users who prefer dark mode. */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
@@ -173,6 +175,9 @@ function BackendSessionGate({ children }: { children: ReactNode }) {
 }
 
 function AuthGateLoading() {
+  // Shown while Clerk is still resolving the session. Without this,
+  // <SignedIn>/<SignedOut> both render nothing and the page looks empty
+  // for however long the Clerk script/network call takes.
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
@@ -188,6 +193,8 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const theme = useTheme((s) => s.theme);
 
+  // Keep the applied theme correct if the user's OS preference changes
+  // while "system" is selected, and re-apply on route/theme changes.
   useEffect(() => {
     applyTheme(theme);
     if (theme !== "system") return;
@@ -202,18 +209,32 @@ function RootComponent() {
   const isFullScreen = isDetail || pathname.startsWith('/inbox/') || pathname === '/concierge';
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {isPublicRoute ? (
-        <Outlet />
-      ) : (
-        <div className="flex flex-col min-h-screen">
-          {!isFullScreen && <SiteHeader />}
-          <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
-            <Outlet />
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY || ""} afterSignOutUrl="/">
+      <QueryClientProvider client={queryClient}>
+        {isPublicRoute ? (
+          <Outlet />
+        ) : (
+          <div className="flex flex-col min-h-screen">
+            <ClerkLoading>
+              <AuthGateLoading />
+            </ClerkLoading>
+            <ClerkLoaded>
+              <SignedIn>
+                <BackendSessionGate>
+                  {!isFullScreen && <SiteHeader />}
+                  <div className={isFullScreen ? "flex-1" : "flex-1 pb-16 md:pb-0"}>
+                    <Outlet />
+                  </div>
+                  {!isFullScreen && <MobileNav />}
+                </BackendSessionGate>
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/login" />
+              </SignedOut>
+            </ClerkLoaded>
           </div>
-          {!isFullScreen && <MobileNav />}
-        </div>
-      )}
-    </QueryClientProvider>
+        )}
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
