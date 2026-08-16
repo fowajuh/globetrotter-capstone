@@ -29,15 +29,15 @@ function InboxScreen() {
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
   useEffect(() => {
-    if (isLoaded && !isSignedIn) {
+    if (!isSignedIn) {
       navigate({ to: "/login" });
     }
-  }, [isLoaded, isSignedIn, navigate]);
+  }, [isSignedIn, navigate]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["conversations"],
     queryFn: () => messagesApi.listConversations({ limit: 50 }),
-    enabled: isLoaded && isSignedIn,
+    enabled: isSignedIn,
     // Cheap way to notice new messages/host replies without a socket on
     // this screen; the thread itself uses a live socket for real-time.
     refetchInterval: 15000,
@@ -46,7 +46,7 @@ function InboxScreen() {
   const chats = data?.items ?? [];
   const visibleChats = filter === "unread" ? chats.filter((c) => c.unreadCount > 0) : chats;
 
-  if (!isLoaded || !isSignedIn) {
+  if (!isSignedIn) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="animate-pulse flex flex-col items-center">

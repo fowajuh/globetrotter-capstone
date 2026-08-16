@@ -47,14 +47,15 @@ function Onboarding() {
   const [tilt, setTilt] = useState<{ lat: number; lng: number } | null>(null);
   const navigate = useNavigate();
   const setOnboarded = useUI((s) => s.setOnboarded);
-  const { isSignedIn, isLoaded } = useUser();
+  const { accessToken } = useBackendAuth();
+  const isSignedIn = !!accessToken;
 
   useEffect(() => {
-    if (isLoaded && isSignedIn && step === 4) {
+    if (isSignedIn && step === 4) {
       setOnboarded(true);
       navigate({ to: "/" });
     }
-  }, [isLoaded, isSignedIn, step, navigate, setOnboarded]);
+  }, [isSignedIn, step, navigate, setOnboarded]);
 
   const finish = () => {
     if (isSignedIn) {
