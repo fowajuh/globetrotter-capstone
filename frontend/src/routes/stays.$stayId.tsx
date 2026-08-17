@@ -336,9 +336,22 @@ function StayDetail() {
               <h2 className="text-h2 mb-6">More stays nearby</h2>
               <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 -mx-4 px-4 sm:mx-0 sm:px-0">
                 {listings.filter(l => l.id !== listing.id).slice(0, 5).map(l => (
-                  <Link key={l.id} to="/stays/$stayId" params={{ stayId: l.id }} className="min-w-[220px] flex-shrink-0 group block">
-                    <div className="aspect-[4/3] rounded-xl overflow-hidden mb-3 bg-muted">
-                      <img src={l.images[0]} alt={l.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <Link
+                    key={l.id}
+                    to="/stays/$stayId"
+                    params={{ stayId: l.id }}
+                    className="flex-shrink-0 group block"
+                    style={{ width: "220px", minWidth: "220px" }}
+                  >
+                    <div
+                      className="rounded-xl overflow-hidden mb-3 bg-muted relative"
+                      style={{ aspectRatio: "4 / 3" }}
+                    >
+                      <img
+                        src={l.images[0]}
+                        alt={l.title}
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
                     </div>
                     <div className="flex justify-between items-start gap-2">
                       <h3 className="font-semibold text-sm leading-tight">{l.title}</h3>
