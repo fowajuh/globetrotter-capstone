@@ -1,27 +1,44 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Bell, Globe, Shield, CreditCard,
   Smartphone, Moon, HelpCircle, LogOut, Star, Languages, Eye,
   MessageSquare, Lock, Trash2, ChevronDown, AlertTriangle
 } from "lucide-react";
+import { toast } from "sonner";
 import { useBackendAuth } from "@/lib/auth-store";
 import { api } from "@/lib/api-client";
+import { usersApi } from "@/lib/api/users";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/lib/theme-store";
+import { useNotificationPrefs } from "@/lib/notification-prefs-store";
+import { useLocalePrefs, LANGUAGES, COUNTRIES } from "@/lib/locale-prefs-store";
+import { PickerSheet } from "@/components/settings/PickerSheet";
+import { RateAppSheet } from "@/components/settings/RateAppSheet";
+import { FeedbackSheet } from "@/components/settings/FeedbackSheet";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
+const CURRENCIES = [
+  { value: "USD", label: "USD – US Dollar", name: "US Dollar" },
+  { value: "EUR", label: "EUR – Euro", name: "Euro" },
+  { value: "GBP", label: "GBP – British Pound", name: "British Pound" },
+  { value: "XAF", label: "XAF – Central African Franc", name: "Central African Franc" },
+  { value: "NGN", label: "NGN – Nigerian Naira", name: "Nigerian Naira" },
+];
+
 type SettingItem = {
   icon: React.ElementType;
   label: string;
   description?: string;
-  type: "link" | "toggle" | "select";
+  type: "link" | "toggle" | "select" | "action";
   value?: boolean | string;
+  to?: string;
 };
 
 type SettingSection = {
@@ -32,11 +49,29 @@ type SettingSection = {
 function SettingsPage() {
   const { refreshToken, clear } = useBackendAuth();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState(true);
+  const queryClient = useQueryClient();
   const { theme, setTheme } = useTheme();
   const darkMode = theme === "dark";
   const [biometric, setBiometric] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [openPicker, setOpenPicker] = useState<"language" | "currency" | "country" | null>(null);
+  const [rateOpen, setRateOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const notifPrefs = useNotificationPrefs();
+  const { language, country, setLanguage, setCountry } = useLocalePrefs();
+
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: usersApi.me, retry: false });
+  const currency = meQuery.data?.homeCurrency ?? "USD";
+
+  const updateCurrency = useMutation({
+    mutationFn: (homeCurrency: string) => usersApi.updateMe({ homeCurrency }),
+    onSuccess: (user) => {
+      queryClient.setQueryData(["me"], user);
+      toast.success(`Currency set to ${user.homeCurrency}.`);
+    },
+    onError: () => toast.error("Couldn't update currency — try again."),
+  });
 
   const signOut = async () => {
     try {
@@ -53,16 +88,19 @@ function SettingsPage() {
     {
       title: "Account",
       items: [
-        { icon: Globe, label: "Language", description: "English (US)", type: "select" },
-        { icon: CreditCard, label: "Currency", description: "USD – US Dollar", type: "select" },
-        { icon: Languages, label: "Country/region", description: "Cameroon", type: "select" },
+        { icon: Globe, label: "Language", description: language, type: "select" },
+        { icon: CreditCard, label: "Currency", description: `${currency} – ${CURRENCIES.find(c => c.value === currency)?.name ?? ""}`, type: "select" },
+        { icon: Languages, label: "Country/region", description: country, type: "select" },
       ],
     },
     {
       title: "Notifications",
       items: [
-        { icon: Bell, label: "Push notifications", description: "Trip reminders, messages and updates", type: "toggle", value: notifications },
-        { icon: MessageSquare, label: "Email notifications", description: "Promotional and booking emails", type: "toggle", value: true },
+        { icon: Bell, label: "Trip updates", description: "Booking confirmations, check-in reminders", type: "toggle", value: notifPrefs.pushTripUpdates },
+        { icon: MessageSquare, label: "Messages & calls", description: "New host messages and missed calls", type: "toggle", value: notifPrefs.pushMessages },
+        { icon: Star, label: "Price drops", description: "When a wishlisted stay gets cheaper", type: "toggle", value: notifPrefs.pushPriceDrops },
+        { icon: MessageSquare, label: "Booking receipts", description: "Email a receipt after every booking", type: "toggle", value: notifPrefs.emailBookingReceipts },
+        { icon: MessageSquare, label: "Promotions", description: "Occasional offers and travel ideas", type: "toggle", value: notifPrefs.emailPromotions },
       ],
     },
     {
@@ -83,25 +121,35 @@ function SettingsPage() {
     {
       title: "Support",
       items: [
-        { icon: HelpCircle, label: "Help Center", description: "Get answers to your questions", type: "link" },
-        { icon: Star, label: "Rate the app", description: "Tell us what you think", type: "link" },
-        { icon: MessageSquare, label: "Send feedback", description: "Help us improve", type: "link" },
+        { icon: HelpCircle, label: "Help Center", description: "Get answers to your questions", type: "link", to: "/help" },
+        { icon: Star, label: "Rate the app", description: "Tell us what you think", type: "action" },
+        { icon: MessageSquare, label: "Send feedback", description: "Help us improve", type: "action" },
       ],
     },
   ];
 
   const handleToggle = (label: string) => {
-    if (label === "Push notifications") setNotifications(v => !v);
-    if (label === "Dark mode") setTheme(darkMode ? "light" : "dark");
-    if (label === "Biometric login") setBiometric(v => !v);
+    if (label === "Dark mode") return setTheme(darkMode ? "light" : "dark");
+    if (label === "Biometric login") return setBiometric(v => !v);
+    if (label === "Trip updates") return notifPrefs.setPref("pushTripUpdates", !notifPrefs.pushTripUpdates);
+    if (label === "Messages & calls") return notifPrefs.setPref("pushMessages", !notifPrefs.pushMessages);
+    if (label === "Price drops") return notifPrefs.setPref("pushPriceDrops", !notifPrefs.pushPriceDrops);
+    if (label === "Booking receipts") return notifPrefs.setPref("emailBookingReceipts", !notifPrefs.emailBookingReceipts);
+    if (label === "Promotions") return notifPrefs.setPref("emailPromotions", !notifPrefs.emailPromotions);
   };
 
-  const getToggleValue = (item: SettingItem) => {
-    if (item.label === "Push notifications") return notifications;
-    if (item.label === "Dark mode") return darkMode;
-    if (item.label === "Biometric login") return biometric;
-    return item.value as boolean;
+  const handleSelect = (label: string) => {
+    if (label === "Language") setOpenPicker("language");
+    if (label === "Currency") setOpenPicker("currency");
+    if (label === "Country/region") setOpenPicker("country");
   };
+
+  const handleAction = (label: string) => {
+    if (label === "Rate the app") setRateOpen(true);
+    if (label === "Send feedback") setFeedbackOpen(true);
+  };
+
+  const getToggleValue = (item: SettingItem) => item.value as boolean;
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -126,19 +174,15 @@ function SettingsPage() {
               <div className="bg-card rounded-2xl border border-border overflow-hidden divide-y divide-border">
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.label}
-                      onClick={() => item.type === "toggle" ? handleToggle(item.label) : undefined}
-                      className="w-full flex items-center gap-4 px-4 py-4 hover:bg-muted/50 transition-colors text-left"
-                    >
+                  const body = (
+                    <>
                       <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0">
                         <Icon className="w-4 h-4 text-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{item.label}</div>
                         {item.description && (
-                          <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5 truncate">{item.description}</div>
                         )}
                       </div>
                       {item.type === "toggle" ? (
@@ -156,6 +200,29 @@ function SettingsPage() {
                       ) : (
                         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                       )}
+                    </>
+                  );
+
+                  const className = "w-full flex items-center gap-4 px-4 py-4 hover:bg-muted/50 transition-colors text-left";
+
+                  if (item.type === "link" && item.to) {
+                    return (
+                      <Link key={item.label} to={item.to} className={className}>
+                        {body}
+                      </Link>
+                    );
+                  }
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => {
+                        if (item.type === "toggle") handleToggle(item.label);
+                        if (item.type === "select") handleSelect(item.label);
+                        if (item.type === "action") handleAction(item.label);
+                      }}
+                      className={className}
+                    >
+                      {body}
                     </button>
                   );
                 })}
@@ -194,7 +261,7 @@ function SettingsPage() {
             </div>
           </motion.div>
 
-          <p className="text-center text-xs text-muted-foreground pt-4">GlobeTrotter v1.0.0 · Made with ❤️ for travellers</p>
+          <p className="text-center text-xs text-muted-foreground pt-4">GlobeTrotter v2.0.0 · Made with ❤️ for travellers</p>
         </div>
       </div>
 
@@ -232,6 +299,33 @@ function SettingsPage() {
           </div>
         )}
       </AnimatePresence>
+
+      <PickerSheet
+        open={openPicker === "language"}
+        onClose={() => setOpenPicker(null)}
+        title="Language"
+        value={language}
+        options={LANGUAGES.map((l) => ({ value: l, label: l }))}
+        onSelect={setLanguage}
+      />
+      <PickerSheet
+        open={openPicker === "currency"}
+        onClose={() => setOpenPicker(null)}
+        title="Currency"
+        value={currency}
+        options={CURRENCIES}
+        onSelect={(v) => updateCurrency.mutate(v)}
+      />
+      <PickerSheet
+        open={openPicker === "country"}
+        onClose={() => setOpenPicker(null)}
+        title="Country / region"
+        value={country}
+        options={COUNTRIES.map((c) => ({ value: c, label: c }))}
+        onSelect={setCountry}
+      />
+      <RateAppSheet open={rateOpen} onClose={() => setRateOpen(false)} />
+      <FeedbackSheet open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }

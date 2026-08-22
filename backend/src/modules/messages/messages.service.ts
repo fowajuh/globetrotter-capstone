@@ -7,6 +7,7 @@ import {
   SendMessageDto,
 } from './dto/message.dto';
 import { ChatGateway } from './chat.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const HOST_REPLIES = [
   "Thanks for reaching out! I'll get back to you with details shortly.",
@@ -27,6 +28,7 @@ export class MessagesService {
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => ChatGateway)) private gateway: ChatGateway,
+    private notifications: NotificationsService,
   ) {}
 
   async listConversations(userId: string, query: ListConversationsQuery) {
@@ -81,7 +83,7 @@ export class MessagesService {
       }));
 
     if (dto.firstMessage) {
-      await this.sendMessage(userId, convo.id, { body: dto.firstMessage });
+      await this.sendMessage(userId, convo.id, { type: "text", body: dto.firstMessage });
     }
     return this.getConversation(userId, convo.id);
   }
@@ -112,7 +114,21 @@ export class MessagesService {
     await this.getConversation(userId, conversationId); // ownership check
 
     const message = await this.prisma.message.create({
-      data: { conversationId, senderId: userId, senderRole: 'user', body: dto.body },
+      data: {
+        conversationId,
+        senderId: userId,
+        senderRole: 'user',
+        type: dto.type,
+        body: dto.body,
+        ...('mediaUrl' in dto
+          ? {
+              mediaUrl: dto.mediaUrl,
+              mediaMimeType: dto.mediaMimeType,
+              ...('mediaDurationSec' in dto ? { mediaDurationSec: dto.mediaDurationSec } : {}),
+              ...('fileName' in dto ? { fileName: dto.fileName, fileSizeBytes: dto.fileSizeBytes } : {}),
+            }
+          : {}),
+      },
     });
     await this.prisma.conversation.update({
       where: { id: conversationId },
@@ -120,6 +136,9 @@ export class MessagesService {
     });
     this.gateway.broadcastMessage(conversationId, message);
 
+    // Voice notes and attachments still get a (text) host reply — calls are
+    // the one channel with their own simulated response flow (see
+    // CallsService.startCall) since "answering" isn't a chat message.
     this.scheduleHostReply(conversationId);
     return message;
   }
@@ -138,13 +157,24 @@ export class MessagesService {
     setTimeout(async () => {
       const body = HOST_REPLIES[Math.floor(Math.random() * HOST_REPLIES.length)];
       const message = await this.prisma.message.create({
-        data: { conversationId, senderId: null, senderRole: 'host', body },
+        data: { conversationId, senderId: null, senderRole: 'host', type: 'text', body },
       });
-      await this.prisma.conversation.update({
+      const convo = await this.prisma.conversation.update({
         where: { id: conversationId },
         data: { lastMessageAt: message.createdAt },
       });
       this.gateway.broadcastMessage(conversationId, message);
+      // Feeds the (previously unused) notification center — see
+      // notifications.service.ts. Best-effort: a failed notification
+      // shouldn't roll back the message that already sent successfully.
+      this.notifications
+        .create(convo.userId, 'message', {
+          conversationId,
+          hostName: convo.hostName,
+          listingTitle: convo.listingTitle,
+          preview: body,
+        })
+        .catch((err) => console.error('Failed to create message notification:', err));
     }, delayMs);
   }
 }

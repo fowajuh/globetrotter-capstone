@@ -1,4 +1,6 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import * as express from 'express';
 import { AppModule } from './app.module';
 import { WsAdapter } from '@nestjs/platform-ws'; 
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
@@ -12,7 +14,12 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
  * of a folder instead of a rewrite.
  */
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Chat voice notes/images/files ride as base64 data URLs in the JSON body
+  // (see message.dto.ts) — there's no object storage in Stage 1 — so the
+  // default 100kb express limit has to grow to fit them.
+  app.use(express.json({ limit: '12mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '12mb' }));
   app.useWebSocketAdapter(new WsAdapter(app));
   app.setGlobalPrefix('api/v1');
   app.enableCors();

@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 /**
  * GET /trips/:id/budget-summary (§7). Returns both "by day" and "by
  * category" views in one payload so the frontend's morph between chart
- * modes (§3.5) is a client-side transition, not two round trips.
+ * modes is a client-side transition, not two round trips.
  */
 @Injectable()
 export class BudgetService {
@@ -20,12 +20,12 @@ export class BudgetService {
     const byDay = new Map<number, number>();
     for (const s of trip.stops) byDay.set(s.dayIndex, (byDay.get(s.dayIndex) ?? 0) + Number(s.cost));
 
-    // No dedicated category column in Stage 1 — bucket by the leading word
-    // of the stop name as a lightweight proxy until a real `category` field
-    // ships; swap this line for a real GROUP BY once that column exists.
+    // Stop.category is a real column (flight/stay/eat/see/move) — group on
+    // it directly rather than the previous name-splitting heuristic, which
+    // predated the category field shipping.
     const byCategory = new Map<string, number>();
     for (const s of trip.stops) {
-      const key = s.name.split(' ')[0].toLowerCase();
+      const key = s.category || 'other';
       byCategory.set(key, (byCategory.get(key) ?? 0) + Number(s.cost));
     }
 

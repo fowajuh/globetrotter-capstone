@@ -6,6 +6,7 @@ import { ChevronLeft, Share, Sun, MapPin, Map as MapIcon, Plus, Calendar, Bed, U
 import { tripsApi, stopsApi, buildTripDays, type BackendStop, type UiDay } from "@/lib/api/trips";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { BudgetChart } from "@/components/trips/BudgetChart";
 
 export const Route = createFileRoute("/trips/$tripId")({
   component: TripDetail,
@@ -57,22 +58,27 @@ function BudgetWidget({ tripId }: { tripId: string }) {
           <div className="h-3 w-1/2 bg-muted rounded" />
         </div>
       ) : (
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Planned</span>
-            <span className="font-semibold">${(data?.planned ?? 0).toLocaleString()}</span>
+        <>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Planned</span>
+              <span className="font-semibold">${(data?.planned ?? 0).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Spent so far</span>
+              <span className="font-semibold">${(data?.spent ?? 0).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between pt-3 border-t border-border">
+              <span className="font-medium">Remaining</span>
+              <span className={cn("font-bold", (data?.remaining ?? 0) < 0 && "text-destructive")}>
+                ${(data?.remaining ?? 0).toLocaleString()}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Spent so far</span>
-            <span className="font-semibold">${(data?.spent ?? 0).toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between pt-3 border-t border-border">
-            <span className="font-medium">Remaining</span>
-            <span className={cn("font-bold", (data?.remaining ?? 0) < 0 && "text-destructive")}>
-              ${(data?.remaining ?? 0).toLocaleString()}
-            </span>
-          </div>
-        </div>
+          {data && (
+            <BudgetChart byDay={data.byDay} byCategory={data.byCategory} currency={data.currency} />
+          )}
+        </>
       )}
       <Link to="/budget" className="block mt-4">
         <Button variant="outline" className="w-full">View full budget</Button>

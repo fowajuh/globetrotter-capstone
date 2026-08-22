@@ -5,6 +5,8 @@ import confetti from "canvas-confetti";
 import { getListing, type Listing } from "@/lib/cameroon-data";
 import { useTravel } from "@/lib/travel-store";
 import { tripsApi } from "@/lib/api/trips";
+import { formatMoney } from "@/lib/currency";
+import { useHomeCurrency } from "@/lib/use-home-currency";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
@@ -21,7 +23,9 @@ export const Route = createFileRoute("/checkout/$stayId")({
 function CheckoutScreen() {
   const listing = Route.useLoaderData() as Listing;
   const navigate = useNavigate();
-  const { addBooking, pendingBooking } = useTravel();
+  const { addBooking, pendingBooking, walletBalance } = useTravel();
+  const homeCurrency = useHomeCurrency();
+  const fmt = (usd: number) => formatMoney(usd, homeCurrency);
 
   // Falls back to a default 5-night stay if the person landed here directly
   // (e.g. a bookmarked link) rather than via the stay page's date picker.
@@ -156,7 +160,7 @@ function CheckoutScreen() {
                     <p className="font-semibold capitalize">
                       {method === "card" ? "Credit or debit card" : method === "paypal" ? "PayPal" : "GlobeTrotter Wallet"}
                     </p>
-                    {method === "wallet" && <p className="text-sm text-muted-foreground">Balance: $2,450.00</p>}
+                    {method === "wallet" && <p className="text-sm text-muted-foreground">Balance: ${walletBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
                   </div>
                 </button>
               ))}
@@ -234,7 +238,7 @@ function CheckoutScreen() {
                       Processing...
                     </span>
                   ) : (
-                    `Confirm and pay · $${total.toLocaleString()}`
+                    `Confirm and pay · ${fmt(total)}`
                   )}
                 </Button>
               </form>
@@ -259,7 +263,7 @@ function CheckoutScreen() {
                     Processing...
                   </span>
                 ) : (
-                  `Confirm and pay · $${total.toLocaleString()}`
+                  `Confirm and pay · ${fmt(total)}`
                 )}
               </Button>
             </>
@@ -286,23 +290,23 @@ function CheckoutScreen() {
             <h3 className="font-bold text-base mb-4">Price details</h3>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="underline">${pricePerNight} x {nights} nights</span>
-                <span>${subtotal.toLocaleString()}</span>
+                <span className="underline">{fmt(pricePerNight)} x {nights} nights</span>
+                <span>{fmt(subtotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="underline">Cleaning fee</span>
-                <span>${cleaningFee}</span>
+                <span>{fmt(cleaningFee)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="underline">GlobeTrotter service fee</span>
-                <span>${serviceFee}</span>
+                <span>{fmt(serviceFee)}</span>
               </div>
             </div>
 
             <div className="h-px bg-border my-4" />
             <div className="flex justify-between font-bold text-base">
-              <span>Total (USD)</span>
-              <span>${total.toLocaleString()}</span>
+              <span>Total{homeCurrency !== "USD" ? ` (${homeCurrency})` : " (USD)"}</span>
+              <span>{fmt(total)}</span>
             </div>
           </div>
         </div>

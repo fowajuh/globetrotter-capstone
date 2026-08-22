@@ -1,13 +1,28 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, Send, Phone, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, Send, Phone } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { messagesApi, subscribeToConversation, type Message } from "@/lib/api/messages";
+import {
+  messagesApi,
+  subscribeToConversation,
+  type Message,
+  type SendMessagePayload,
+} from "@/lib/api/messages";
+import { VoiceRecorder } from "@/components/messaging/VoiceRecorder";
+import { VoiceMessageBubble } from "@/components/messaging/VoiceMessageBubble";
+import { ImageMessageBubble, FileMessageBubble } from "@/components/messaging/AttachmentMessageBubble";
+import { CallMessageBubble } from "@/components/messaging/CallMessageBubble";
+import { AttachmentPicker } from "@/components/messaging/AttachmentPicker";
+import { readFileAsDataUrl, compressImageToDataUrl, assertUnderLimit, MediaTooLargeError } from "@/lib/media-utils";
 
 export const Route = createFileRoute("/inbox/$chatId")({
   component: ChatScreen,
 });
+
+const MAX_FILE_MB = 10;
+const MAX_IMAGE_SOURCE_MB = 25;
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -17,12 +32,44 @@ function formatDayLabel(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
 }
 
+/** Builds a full optimistic Message from a send payload so every field the
+ *  bubble renderer expects exists immediately, before the server round-trip. */
+function buildOptimisticMessage(chatId: string, payload: SendMessagePayload): Message {
+  const base: Message = {
+    id: `optimistic-${Date.now()}`,
+    conversationId: chatId,
+    senderId: null,
+    senderRole: "user",
+    type: payload.type,
+    body: "body" in payload ? payload.body ?? "" : "",
+    mediaUrl: null,
+    mediaMimeType: null,
+    mediaDurationSec: null,
+    fileName: null,
+    fileSizeBytes: null,
+    callStatus: null,
+    callDurationSec: null,
+    readAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  if (payload.type === "voice") {
+    return { ...base, mediaUrl: payload.mediaUrl, mediaMimeType: payload.mediaMimeType, mediaDurationSec: payload.mediaDurationSec };
+  }
+  if (payload.type === "image") {
+    return { ...base, mediaUrl: payload.mediaUrl, mediaMimeType: payload.mediaMimeType };
+  }
+  if (payload.type === "file") {
+    return { ...base, mediaUrl: payload.mediaUrl, mediaMimeType: payload.mediaMimeType, fileName: payload.fileName, fileSizeBytes: payload.fileSizeBytes };
+  }
+  return base;
+}
+
 function ChatScreen() {
   const { chatId } = Route.useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const conversationQuery = useQuery({
@@ -37,19 +84,21 @@ function ChatScreen() {
 
   const messages = messagesQuery.data?.items ?? [];
 
-  // Live updates: the host's (simulated) replies arrive over this socket,
-  // and if the thread is open in two tabs both stay in sync.
+  // Live updates: the host's (simulated) replies and call state arrive over
+  // this socket, and if the thread is open in two tabs both stay in sync.
   useEffect(() => {
-    const unsubscribe = subscribeToConversation(chatId, (message: Message) => {
-      queryClient.setQueryData<{ items: Message[]; nextCursor: string | null } | undefined>(
-        ["conversation", chatId, "messages"],
-        (prev) => {
-          if (!prev) return prev;
-          if (prev.items.some((m) => m.id === message.id)) return prev;
-          return { ...prev, items: [...prev.items, message] };
-        },
-      );
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    const unsubscribe = subscribeToConversation(chatId, {
+      onMessage: (message) => {
+        queryClient.setQueryData<{ items: Message[]; nextCursor: string | null } | undefined>(
+          ["conversation", chatId, "messages"],
+          (prev) => {
+            if (!prev) return prev;
+            if (prev.items.some((m) => m.id === message.id)) return prev;
+            return { ...prev, items: [...prev.items, message] };
+          },
+        );
+        queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      },
     });
     return unsubscribe;
   }, [chatId, queryClient]);
@@ -59,38 +108,29 @@ function ChatScreen() {
   }, [messages.length]);
 
   const sendMutation = useMutation({
-    mutationFn: (body: string) => messagesApi.sendMessage(chatId, body),
-    onMutate: async (body: string) => {
+    mutationFn: (payload: SendMessagePayload) => messagesApi.sendMessage(chatId, payload),
+    onMutate: async (payload: SendMessagePayload) => {
       setSending(true);
-      setSendError(null);
-      const optimistic: Message = {
-        id: `optimistic-${Date.now()}`,
-        conversationId: chatId,
-        senderId: null,
-        senderRole: "user",
-        body,
-        readAt: null,
-        createdAt: new Date().toISOString(),
-      };
+      const optimistic = buildOptimisticMessage(chatId, payload);
       queryClient.setQueryData<{ items: Message[]; nextCursor: string | null } | undefined>(
         ["conversation", chatId, "messages"],
         (prev) => (prev ? { ...prev, items: [...prev.items, optimistic] } : prev),
       );
       return { optimisticId: optimistic.id };
     },
-    onSuccess: (real, _body, ctx) => {
+    onSuccess: (real, _payload, ctx) => {
       queryClient.setQueryData<{ items: Message[]; nextCursor: string | null } | undefined>(
         ["conversation", chatId, "messages"],
         (prev) => (prev ? { ...prev, items: prev.items.map((m) => (m.id === ctx?.optimisticId ? real : m)) } : prev),
       );
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: (err, _body, ctx) => {
+    onError: (err, _payload, ctx) => {
       // Previously rolled back silently — the bubble would flash and
       // vanish with zero feedback, indistinguishable from "nothing
       // happened." Surface the real cause instead.
       console.error("Failed to send message:", err);
-      setSendError(err instanceof Error ? err.message : "Message failed to send. Please try again.");
+      toast.error(err instanceof Error ? err.message : "Message failed to send. Please try again.");
       queryClient.setQueryData<{ items: Message[]; nextCursor: string | null } | undefined>(
         ["conversation", chatId, "messages"],
         (prev) => (prev ? { ...prev, items: prev.items.filter((m) => m.id !== ctx?.optimisticId) } : prev),
@@ -104,8 +144,53 @@ function ChatScreen() {
     const body = inputText.trim();
     if (!body) return;
     setInputText("");
-    sendMutation.mutate(body);
+    sendMutation.mutate({ type: "text", body });
   };
+
+  const handleSendVoice = ({
+    blob,
+    mimeType,
+    durationSec,
+  }: {
+    blob: Blob;
+    mimeType: string;
+    durationSec: number;
+    peaks: number[];
+  }) => {
+    readFileAsDataUrl(blob)
+      .then((mediaUrl) => {
+        sendMutation.mutate({ type: "voice", mediaUrl, mediaMimeType: mimeType, mediaDurationSec: durationSec });
+      })
+      .catch(() => toast.error("Couldn't process that voice note. Try again."));
+  };
+
+  const handlePickImage = async (file: File) => {
+    try {
+      assertUnderLimit(file.size, MAX_IMAGE_SOURCE_MB);
+      const { dataUrl, mimeType } = await compressImageToDataUrl(file);
+      sendMutation.mutate({ type: "image", mediaUrl: dataUrl, mediaMimeType: mimeType });
+    } catch (err) {
+      toast.error(err instanceof MediaTooLargeError ? err.message : "Couldn't send that photo. Try a different one.");
+    }
+  };
+
+  const handlePickFile = async (file: File) => {
+    try {
+      assertUnderLimit(file.size, MAX_FILE_MB);
+      const mediaUrl = await readFileAsDataUrl(file);
+      sendMutation.mutate({
+        type: "file",
+        mediaUrl,
+        mediaMimeType: file.type || "application/octet-stream",
+        fileName: file.name,
+        fileSizeBytes: file.size,
+      });
+    } catch (err) {
+      toast.error(err instanceof MediaTooLargeError ? `That file is over ${MAX_FILE_MB}MB.` : "Couldn't send that file. Try again.");
+    }
+  };
+
+  const goToCallScreen = () => navigate({ to: "/inbox/$chatId/call", params: { chatId } });
 
   const convo = conversationQuery.data;
   const dayLabel = messages[0] ? formatDayLabel(messages[0].createdAt) : null;
@@ -126,8 +211,13 @@ function ChatScreen() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <button className="p-2 rounded-full hover:bg-muted transition-colors" disabled title="Calling isn't available yet">
-            <Phone className="w-5 h-5 opacity-40" />
+          <button
+            onClick={goToCallScreen}
+            disabled={!convo}
+            aria-label={`Call ${convo?.hostName ?? "host"}`}
+            className="p-2 rounded-full hover:bg-muted transition-colors disabled:opacity-40"
+          >
+            <Phone className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -160,13 +250,42 @@ function ChatScreen() {
 
         {messages.map((msg) => {
           const isUser = msg.senderRole === "user";
+
+          if (msg.type === "call") {
+            return (
+              <div key={msg.id} className={cn("flex flex-col", isUser ? "self-end items-end" : "self-start items-start")}>
+                <CallMessageBubble status={msg.callStatus} durationSec={msg.callDurationSec} isUser={isUser} onCallBack={goToCallScreen} />
+                <span className="text-[10px] text-muted-foreground mt-1 mx-1">{formatTime(msg.createdAt)}</span>
+              </div>
+            );
+          }
+
           return (
             <div key={msg.id} className={cn("flex flex-col max-w-[75%]", isUser ? "self-end items-end" : "self-start items-start")}>
-              <div className={cn(
-                "px-4 py-2.5 rounded-2xl text-[15px]",
-                isUser ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"
-              )}>
-                {msg.body}
+              <div
+                className={cn(
+                  "rounded-2xl text-[15px]",
+                  msg.type === "text" && "px-4 py-2.5",
+                  msg.type === "voice" && "px-3 py-2.5",
+                  msg.type === "image" && "p-1",
+                  msg.type === "file" && "p-1.5",
+                  isUser ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm",
+                )}
+              >
+                {msg.type === "text" && msg.body}
+                {msg.type === "voice" && msg.mediaUrl && (
+                  <VoiceMessageBubble mediaUrl={msg.mediaUrl} durationSec={msg.mediaDurationSec ?? 0} isUser={isUser} />
+                )}
+                {msg.type === "image" && msg.mediaUrl && <ImageMessageBubble mediaUrl={msg.mediaUrl} />}
+                {msg.type === "file" && msg.mediaUrl && msg.fileName && (
+                  <FileMessageBubble
+                    mediaUrl={msg.mediaUrl}
+                    fileName={msg.fileName}
+                    fileSizeBytes={msg.fileSizeBytes}
+                    mediaMimeType={msg.mediaMimeType}
+                    isUser={isUser}
+                  />
+                )}
               </div>
               <span className="text-[10px] text-muted-foreground mt-1 mx-1">{formatTime(msg.createdAt)}</span>
             </div>
@@ -177,27 +296,26 @@ function ChatScreen() {
 
       {/* Input Area */}
       <footer className="p-4 bg-background border-t border-border shrink-0">
-        {sendError && (
-          <p className="text-xs text-destructive text-center mb-2">{sendError}</p>
-        )}
-        <form onSubmit={handleSend} className="flex items-end gap-2 bg-muted p-2 rounded-3xl border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
-          <div className="p-2 text-muted-foreground/40 shrink-0" title="Attachments aren't available yet">
-            <MoreHorizontal className="w-5 h-5" />
-          </div>
+        <form onSubmit={handleSend} className="flex items-end gap-1 bg-muted p-2 rounded-3xl border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+          <AttachmentPicker onPickImage={handlePickImage} onPickFile={handlePickFile} disabled={sending} />
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 bg-transparent border-none outline-none max-h-32 py-2.5 text-[15px]"
+            className="flex-1 bg-transparent border-none outline-none max-h-32 py-2.5 text-[15px] min-w-0"
           />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || sending}
-            className="p-2.5 bg-primary text-primary-foreground rounded-full disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground shrink-0 transition-all hover:scale-105 active:scale-95"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          {inputText.trim() ? (
+            <button
+              type="submit"
+              disabled={sending}
+              className="p-2.5 bg-primary text-primary-foreground rounded-full disabled:opacity-50 shrink-0 transition-all hover:scale-105 active:scale-95"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          ) : (
+            <VoiceRecorder onSend={handleSendVoice} onError={(msg) => toast.error(msg)} disabled={sending} />
+          )}
         </form>
       </footer>
     </div>

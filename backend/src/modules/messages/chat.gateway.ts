@@ -50,11 +50,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** Called by MessagesService right after persisting a message (user or
    *  simulated host reply) so every open tab on this thread updates live. */
   broadcastMessage(conversationId: string, message: unknown) {
+    this.broadcastToRoom(conversationId, { type: 'message', conversationId, message });
+  }
+
+  /** Called by CallsService on every call state transition (ringing ->
+   *  active -> ended/declined/missed) so the call screen in every open tab
+   *  animates in lockstep with the server-timed state instead of guessing
+   *  locally with setTimeout. */
+  broadcastCallEvent(conversationId: string, call: unknown) {
+    this.broadcastToRoom(conversationId, { type: 'call', conversationId, call });
+  }
+
+  private broadcastToRoom(conversationId: string, payload: Record<string, unknown>) {
     const room = this.rooms.get(conversationId);
     if (!room) return;
-    const payload = JSON.stringify({ type: 'message', conversationId, message });
+    const data = JSON.stringify(payload);
     for (const client of room) {
-      if (client.readyState === WebSocket.OPEN) client.send(payload);
+      if (client.readyState === WebSocket.OPEN) client.send(data);
     }
   }
 }

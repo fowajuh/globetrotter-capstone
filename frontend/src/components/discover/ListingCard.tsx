@@ -5,6 +5,8 @@ import { useState } from "react";
 import { formatXaf, type Listing } from "@/lib/cameroon-data";
 import { useTravel } from "@/lib/travel-store";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/currency";
+import { useHomeCurrency } from "@/lib/use-home-currency";
 
 export function ListingCard({
   listing,
@@ -20,6 +22,7 @@ export function ListingCard({
   const { wishlist, toggleWish } = useTravel();
   const wished = wishlist.includes(listing.id);
   const [frame, setFrame] = useState(0);
+  const homeCurrency = useHomeCurrency();
 
   return (
     <motion.div
@@ -109,7 +112,9 @@ export function ListingCard({
           <p className="text-sm text-ink-60 truncate">{listing.tagline}</p>
           <p className="mt-1.5 text-sm text-ink-90">
             <span className="num font-medium">{formatXaf(listing.price)}</span>
-            <span className="text-ink-60"> night · ≈ ${listing.usd}</span>
+            <span className="text-ink-60">
+              {" "}night{homeCurrency !== "XAF" && <> · ≈ {formatMoney(listing.usd, homeCurrency)}</>}
+            </span>
           </p>
         </div>
       </Link>

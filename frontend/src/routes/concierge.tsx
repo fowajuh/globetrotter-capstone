@@ -1,86 +1,126 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Send, MapPin, Star, Heart, ChevronRight, Mic } from "lucide-react";
-import { listings } from "@/lib/cameroon-data";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Send, Heart, ChevronLeft, RotateCcw, Star, Zap,
+  Waves, Mountain, Trees, Binoculars, Building2, Landmark, Droplets, Utensils,
+  Users, Wallet, MapPinned,
+} from "lucide-react";
+import { listings, type Listing } from "@/lib/cameroon-data";
+import { interpretQuery } from "@/lib/concierge-intent";
 import { useTravel } from "@/lib/travel-store";
-import { Link } from "@tanstack/react-router";
+import { formatMoney } from "@/lib/currency";
+import { useHomeCurrency } from "@/lib/use-home-currency";
+import { ConciergeMark } from "@/components/concierge/ConciergeMark";
+import { ConciergeVoiceInput } from "@/components/concierge/ConciergeVoiceInput";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/concierge")({
   component: ConciergeScreen,
 });
 
-type Message = {
-  id: number;
+type ChatMessage = {
+  id: string;
   sender: "ai" | "user";
-  text?: string;
-  listings?: typeof listings;
+  text: string;
+  results?: Listing[];
 };
 
-const suggestions = [
-  "Find me a beachfront villa under $200",
-  "Best places to stay near Douala",
-  "Family-friendly stays in Cameroon",
-  "Budget hostels for solo travel",
+const categoryIcon: Record<string, typeof Waves> = {
+  Beachfront: Waves, Mountain, Rainforest: Trees, Safari: Binoculars,
+  "City lofts": Building2, Heritage: Landmark, Lakeside: Droplets, "Chef's table": Utensils,
+};
+
+const CAPABILITIES = [
+  { icon: Waves, label: "Beachfront escapes", query: "beachfront stays near Kribi", sub: "Kribi & the coast" },
+  { icon: Users, label: "Family-friendly", query: "family-friendly stays for 4 or more", sub: "Space for everyone" },
+  { icon: Wallet, label: "Under $80/night", query: "budget stays under $80", sub: "Great value picks" },
+  { icon: MapPinned, label: "Near Douala", query: "stays near Douala", sub: "City energy" },
 ];
 
-const aiReplies: Record<string, { text: string; filter: (l: typeof listings[0]) => boolean }> = {
-  beach: { text: "Here are the best beachfront options I found for you 🏖️", filter: (l) => l.category.includes("beach") || l.city.toLowerCase().includes("kribi") },
-  budget: { text: "Great picks for budget travelers 💰", filter: (l) => l.usd < 80 },
-  family: { text: "Perfect family-friendly stays with space for everyone 👨‍👩‍👧‍👦", filter: (l) => l.guests >= 4 },
-  douala: { text: "Top-rated stays in and around Douala 🌆", filter: (l) => l.region.toLowerCase().includes("littoral") },
-  solo: { text: "Cozy solo traveler spots with great host reviews ✈️", filter: (l) => l.guests <= 2 },
-};
+const GREETING =
+  "Hi, I'm your GlobeTrotter concierge. Tell me a place, a budget, or a vibe — beachfront, family-friendly, under $80 — and I'll line up the best matches from across Cameroon.";
 
-function getAIResponse(query: string): Message {
-  const q = query.toLowerCase();
-  let matched = Object.entries(aiReplies).find(([key]) => q.includes(key));
-  if (!matched) matched = ["default", { text: "Here are some great stays I found for you ✨", filter: () => true }];
-  const [, { text, filter }] = matched;
-  return {
-    id: Date.now(),
-    sender: "ai",
-    text,
-    listings: listings.filter(filter).slice(0, 4),
-  };
+function greetingMessage(): ChatMessage {
+  return { id: "greeting", sender: "ai", text: GREETING };
 }
 
-function ListingChip({ listing }: { listing: typeof listings[0] }) {
+function ListingResultCard({ listing, index }: { listing: Listing; index: number }) {
   const { wishlist, toggleWish } = useTravel();
   const isWished = wishlist.includes(listing.id);
+  const Icon = categoryIcon[listing.category] ?? Waves;
+  const homeCurrency = useHomeCurrency();
+
   return (
-    <Link to="/stays/$stayId" params={{ stayId: listing.id }}
-      className="flex-shrink-0 w-56 bg-card border border-border rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.25), ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="relative h-36">
-        <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleWish(listing.id); }}
-          className="absolute top-2 right-2 w-8 h-8 bg-black/30 backdrop-blur-sm rounded-full flex items-center justify-center"
-        >
-          <Heart className={cn("w-4 h-4", isWished ? "fill-primary text-primary" : "text-white")} />
-        </button>
-      </div>
-      <div className="p-3">
-        <div className="flex justify-between items-start gap-1 mb-1">
-          <h3 className="font-semibold text-sm leading-tight line-clamp-1">{listing.city}, {listing.region}</h3>
-          <div className="flex items-center gap-0.5 text-xs shrink-0">
-            <Star className="w-3 h-3 fill-foreground" />
-            {listing.rating.toFixed(2)}
-          </div>
+      <Link
+        to="/stays/$stayId"
+        params={{ stayId: listing.id }}
+        className="group flex-shrink-0 w-52 bg-cloud-white border border-ink-90/10 rounded-2xl overflow-hidden hover:shadow-modal transition-shadow"
+      >
+        <div className="relative h-32">
+          <img src={listing.images[0]} alt={listing.title} className="w-full h-full object-cover" />
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleWish(listing.id); }}
+            aria-label={isWished ? "Remove from wishlist" : "Save to wishlist"}
+            className="absolute top-2 right-2 w-7 h-7 bg-departure-navy/40 backdrop-blur-sm rounded-full flex items-center justify-center"
+          >
+            <Heart className={cn("w-3.5 h-3.5", isWished ? "fill-runway-red text-runway-red" : "text-cloud-white")} />
+          </button>
+          <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 num text-[9px] uppercase tracking-[0.16em] bg-cloud-white/90 text-departure-navy px-1.5 py-1 rounded-full">
+            <Icon className="w-3 h-3" /> {listing.category}
+          </span>
+          {listing.instantBook && (
+            <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 num text-[9px] uppercase tracking-[0.16em] bg-beacon-amber text-departure-navy px-1.5 py-1 rounded-full">
+              <Zap className="w-2.5 h-2.5" />
+            </span>
+          )}
         </div>
-        <p className="text-sm"><span className="font-bold">${listing.usd}</span> <span className="text-muted-foreground">night</span></p>
+        <div className="p-3">
+          <div className="flex justify-between items-start gap-1 mb-0.5">
+            <h3 className="font-display text-[13px] leading-tight text-departure-navy line-clamp-1">
+              {listing.city}, {listing.region}
+            </h3>
+            <div className="flex items-center gap-0.5 text-[11px] shrink-0 num">
+              <Star className="w-3 h-3 fill-beacon-amber text-beacon-amber" />
+              {listing.rating.toFixed(2)}
+            </div>
+          </div>
+          <p className="text-[13px] text-ink-90">
+            <span className="num font-medium">{formatMoney(listing.usd, homeCurrency)}</span> <span className="text-ink-60">night</span>
+          </p>
+        </div>
+      </Link>
+    </motion.div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex gap-3 items-end">
+      <ConciergeMark size="sm" thinking />
+      <div className="bg-runway-sand px-4 py-3.5 rounded-2xl rounded-bl-sm flex items-center gap-[3px] h-[38px]">
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="w-[3px] rounded-full bg-departure-navy/50"
+            animate={{ height: [6, 14, 6] }}
+            transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
+          />
+        ))}
       </div>
-    </Link>
+    </div>
   );
 }
 
 function ConciergeScreen() {
-  const [messages, setMessages] = useState<Message[]>([{
-    id: 0,
-    sender: "ai",
-    text: "Hi! I'm your AI travel concierge 🌍 Tell me what you're looking for — budget, destination, vibe — and I'll find the perfect stay for you.",
-  }]);
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState<ChatMessage[]>([greetingMessage()]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -90,15 +130,23 @@ function ConciergeScreen() {
   }, [messages, isTyping]);
 
   const handleSend = (query: string = input) => {
-    if (!query.trim()) return;
-    const userMsg: Message = { id: Date.now(), sender: "user", text: query };
-    setMessages(prev => [...prev, userMsg]);
+    if (!query.trim() || isTyping) return;
+    const userMsg: ChatMessage = { id: `u-${Date.now()}`, sender: "user", text: query };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsTyping(true);
+
+    const thinkMs = 650 + Math.random() * 700;
     setTimeout(() => {
+      const { summary, results } = interpretQuery(query, listings);
       setIsTyping(false);
-      setMessages(prev => [...prev, getAIResponse(query)]);
-    }, 1200);
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, sender: "ai", text: summary, results }]);
+    }, thinkMs);
+  };
+
+  const resetChat = () => {
+    setMessages([greetingMessage()]);
+    setInput("");
   };
 
   return (
@@ -106,74 +154,88 @@ function ConciergeScreen() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border px-4 py-3 shrink-0">
         <div className="flex items-center gap-3 max-w-screen-md mx-auto">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary via-pink-500 to-orange-400 flex items-center justify-center shadow-md">
-            <Sparkles className="w-5 h-5 text-white" />
+          <button
+            onClick={() => navigate({ to: "/" })}
+            aria-label="Back"
+            className="p-1.5 -ml-1.5 rounded-full hover:bg-muted transition-colors md:hidden"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <ConciergeMark />
+          <div className="flex-1 min-w-0">
+            <h1 className="font-display text-[15px] leading-tight">Concierge</h1>
+            <p className="text-xs text-ink-60 truncate">Matches stays to what you tell it</p>
           </div>
-          <div>
-            <h1 className="font-bold text-[15px]">AI Concierge</h1>
-            <p className="text-xs text-muted-foreground">Your personal travel assistant</p>
-          </div>
+          {messages.length > 1 && (
+            <button
+              onClick={resetChat}
+              aria-label="Start a new conversation"
+              className="p-2 rounded-full hover:bg-muted transition-colors text-ink-60 hover:text-foreground"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4 max-w-screen-md mx-auto w-full">
+      <main className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-5 max-w-screen-md mx-auto w-full">
         {messages.map((msg) => {
           const isUser = msg.sender === "user";
           return (
-            <div key={msg.id} className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
-              {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary via-pink-500 to-orange-400 flex items-center justify-center shrink-0 mt-auto">
-                  <Sparkles className="w-4 h-4 text-white" />
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}
+            >
+              {!isUser && <ConciergeMark size="sm" />}
+              <div className={cn("flex flex-col gap-2.5 max-w-[82%]", isUser && "items-end")}>
+                <div
+                  className={cn(
+                    "px-4 py-2.5 rounded-2xl text-[15px] leading-relaxed",
+                    isUser
+                      ? "bg-departure-navy text-cloud-white rounded-br-sm"
+                      : "bg-runway-sand text-ink-90 rounded-bl-sm",
+                  )}
+                >
+                  {msg.text}
                 </div>
-              )}
-              <div className={cn("flex flex-col gap-2 max-w-[80%]", isUser && "items-end")}>
-                {msg.text && (
-                  <div className={cn(
-                    "px-4 py-3 rounded-2xl text-[15px] leading-relaxed",
-                    isUser ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"
-                  )}>
-                    {msg.text}
-                  </div>
-                )}
-                {msg.listings && msg.listings.length > 0 && (
-                  <div className="flex gap-3 overflow-x-auto pb-2 max-w-[85vw] scrollbar-hide">
-                    {msg.listings.map((l) => <ListingChip key={l.id} listing={l} />)}
+                {msg.results && msg.results.length > 0 && (
+                  <div className="flex gap-3 overflow-x-auto pb-1 max-w-[85vw] scrollbar-hide -mx-1 px-1">
+                    {msg.results.map((l, i) => (
+                      <ListingResultCard key={l.id} listing={l} index={i} />
+                    ))}
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
           );
         })}
-        
-        {isTyping && (
-          <div className="flex gap-3 items-end">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary via-pink-500 to-orange-400 flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-            <div className="bg-muted px-4 py-3 rounded-2xl rounded-bl-sm">
-              <div className="flex gap-1 items-center h-4">
-                <span className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-            </div>
-          </div>
-        )}
+
+        <AnimatePresence>{isTyping && <TypingIndicator />}</AnimatePresence>
         <div ref={endRef} />
       </main>
 
-      {/* Suggestions */}
-      {messages.length <= 1 && (
-        <div className="px-4 pb-2 max-w-screen-md mx-auto w-full">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-            {suggestions.map((s) => (
+      {/* Capability cards — shown before the first real question */}
+      {messages.length === 1 && (
+        <div className="px-4 pb-3 max-w-screen-md mx-auto w-full">
+          <div className="perforation-divider mb-3" />
+          <div className="grid grid-cols-2 gap-2.5">
+            {CAPABILITIES.map(({ icon: Icon, label, query, sub }) => (
               <button
-                key={s}
-                onClick={() => handleSend(s)}
-                className="shrink-0 px-4 py-2 rounded-full border border-border bg-card text-sm font-medium hover:border-primary hover:bg-primary/5 transition-colors"
+                key={label}
+                onClick={() => handleSend(query)}
+                className="flex items-center gap-2.5 text-left px-3 py-2.5 rounded-xl border border-border bg-cloud-white hover:border-departure-navy/30 hover:shadow-card transition-all"
               >
-                {s}
+                <span className="w-8 h-8 rounded-full bg-departure-navy/5 flex items-center justify-center shrink-0">
+                  <Icon className="w-4 h-4 text-departure-navy" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-medium leading-tight truncate">{label}</span>
+                  <span className="block text-[11px] text-ink-60 truncate">{sub}</span>
+                </span>
               </button>
             ))}
           </div>
@@ -184,19 +246,25 @@ function ConciergeScreen() {
       <footer className="px-4 pb-4 pt-2 bg-background border-t border-border shrink-0">
         <form
           onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-          className="flex items-center gap-2 bg-muted px-4 py-2 rounded-3xl border border-border focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/30 transition-all max-w-screen-md mx-auto"
+          className="flex items-center gap-1 bg-muted pl-4 pr-1.5 py-1.5 rounded-3xl border border-border focus-within:border-departure-navy/40 focus-within:ring-1 focus-within:ring-departure-navy/20 transition-all max-w-screen-md mx-auto"
         >
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask me anything about travel..."
-            className="flex-1 bg-transparent border-none outline-none py-2.5 text-[15px]"
+            placeholder="Ask for a place, budget, or vibe…"
+            className="flex-1 bg-transparent border-none outline-none py-2 text-[15px] min-w-0"
+          />
+          <ConciergeVoiceInput
+            onTranscript={(text) => setInput(text)}
+            onError={(msg) => toast.error(msg)}
+            disabled={isTyping}
           />
           <button
             type="submit"
-            disabled={!input.trim()}
-            className="p-2.5 bg-primary text-primary-foreground rounded-full disabled:opacity-40 disabled:bg-muted disabled:text-muted-foreground transition-all hover:scale-105 active:scale-95"
+            disabled={!input.trim() || isTyping}
+            aria-label="Send"
+            className="p-2.5 bg-departure-navy text-cloud-white rounded-full disabled:opacity-40 disabled:bg-muted disabled:text-muted-foreground transition-all hover:scale-105 active:scale-95 shrink-0"
           >
             <Send className="w-4 h-4" />
           </button>

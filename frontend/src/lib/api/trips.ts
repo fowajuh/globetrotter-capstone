@@ -183,7 +183,16 @@ export const tripsApi = {
   remove: (id: string) => api.delete<void>(`/trips/${id}`),
   duplicate: (id: string) => api.post<BackendTrip>(`/trips/${id}/duplicate`),
   budgetSummary: (id: string) =>
-    api.get<{ planned: number; spent: number; remaining: number }>(`/trips/${id}/budget-summary`),
+    api.get<{
+      tripId: string;
+      currency: string;
+      planned: number;
+      spent: number;
+      remaining: number;
+      overBudget: boolean;
+      byDay: { dayIndex: number; total: number }[];
+      byCategory: { category: string; total: number }[];
+    }>(`/trips/${id}/budget-summary`),
 };
 
 export const stopsApi = {

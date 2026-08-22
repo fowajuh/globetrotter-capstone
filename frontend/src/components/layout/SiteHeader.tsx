@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useBackendAuth } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 export function SiteHeader() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -55,16 +56,19 @@ export function SiteHeader() {
           </nav>
 
           {accessToken ? (
-            <Link to="/profile" className="border border-border p-1 pl-3 pr-1 rounded-full flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer bg-background">
-              <div className="flex flex-col gap-[3px]">
-                <span className="w-4 h-[1.5px] bg-foreground" />
-                <span className="w-4 h-[1.5px] bg-foreground" />
-                <span className="w-4 h-[1.5px] bg-foreground" />
-              </div>
-              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold">
-                {name ? name[0].toUpperCase() : 'U'}
-              </div>
-            </Link>
+            <>
+              <NotificationBell />
+              <Link to="/profile" className="border border-border p-1 pl-3 pr-1 rounded-full flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer bg-background">
+                <div className="flex flex-col gap-[3px]">
+                  <span className="w-4 h-[1.5px] bg-foreground" />
+                  <span className="w-4 h-[1.5px] bg-foreground" />
+                  <span className="w-4 h-[1.5px] bg-foreground" />
+                </div>
+                <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold">
+                  {name ? name[0].toUpperCase() : 'U'}
+                </div>
+              </Link>
+            </>
           ) : (
             <Link to="/login">
               <Button>Log in</Button>

@@ -27,6 +27,9 @@ export type Conversation = {
   updatedAt: string;
 };
 
+export type MessageType = "text" | "voice" | "image" | "file" | "call";
+export type CallStatus = "ringing" | "active" | "ended" | "no_answer";
+
 /** Mirrors model Message. senderRole "host" is server-simulated for now —
  *  there's no separate host account system yet (see MessagesService). */
 export type Message = {
@@ -34,9 +37,29 @@ export type Message = {
   conversationId: string;
   senderId: string | null;
   senderRole: "user" | "host";
+  type: MessageType;
   body: string;
+  mediaUrl: string | null;
+  mediaMimeType: string | null;
+  mediaDurationSec: number | null;
+  fileName: string | null;
+  fileSizeBytes: number | null;
+  callStatus: CallStatus | null;
+  callDurationSec: number | null;
   readAt: string | null;
   createdAt: string;
+};
+
+/** Mirrors model CallLog. */
+export type CallLog = {
+  id: string;
+  conversationId: string;
+  status: CallStatus;
+  startedAt: string;
+  connectedAt: string | null;
+  endedAt: string | null;
+  durationSec: number | null;
+  messageId: string | null;
 };
 
 export type StartConversationInput = {
@@ -47,6 +70,19 @@ export type StartConversationInput = {
   hostAvatarUrl?: string | null;
   firstMessage?: string;
 };
+
+export type SendMessagePayload =
+  | { type: "text"; body: string }
+  | { type: "voice"; mediaUrl: string; mediaMimeType: string; mediaDurationSec: number; body?: string }
+  | { type: "image"; mediaUrl: string; mediaMimeType: string; body?: string }
+  | {
+      type: "file";
+      mediaUrl: string;
+      mediaMimeType: string;
+      fileName: string;
+      fileSizeBytes: number;
+      body?: string;
+    };
 
 export const messagesApi = {
   listConversations: (params?: { cursor?: string; limit?: number }) => {
@@ -67,8 +103,14 @@ export const messagesApi = {
     const suffix = qs.toString() ? `?${qs}` : "";
     return api.get<{ items: Message[]; nextCursor: string | null }>(`/conversations/${id}/messages${suffix}`);
   },
-  sendMessage: (id: string, body: string) => api.post<Message>(`/conversations/${id}/messages`, { body }),
+  sendMessage: (id: string, payload: SendMessagePayload) => api.post<Message>(`/conversations/${id}/messages`, payload),
   markRead: (id: string) => api.post<void>(`/conversations/${id}/read`),
+};
+
+export const callsApi = {
+  start: (conversationId: string) => api.post<CallLog>(`/conversations/${conversationId}/calls`),
+  end: (conversationId: string, callId: string) =>
+    api.post<CallLog>(`/conversations/${conversationId}/calls/${callId}/end`),
 };
 
 /** ws(s)://host/ws/chat, derived from VITE_API_URL the same way api-client
@@ -81,10 +123,17 @@ function chatSocketUrl(conversationId: string): string {
   return `${wsBase}/ws/chat?${params}`;
 }
 
+type ConversationSocketHandlers = {
+  onMessage?: (message: Message) => void;
+  /** Fired on every CallLog transition (ringing -> active -> ended/no_answer)
+   *  so the call screen renders server time, not a client-guessed timer. */
+  onCallEvent?: (call: CallLog) => void;
+};
+
 /** Opens a live socket for one conversation. Returns an unsubscribe fn.
  *  Reconnects with backoff so a dropped wifi connection doesn't silently
- *  stop delivering the simulated host replies. */
-export function subscribeToConversation(conversationId: string, onMessage: (message: Message) => void): () => void {
+ *  stop delivering the simulated host replies (or call state). */
+export function subscribeToConversation(conversationId: string, handlers: ConversationSocketHandlers): () => void {
   let socket: WebSocket | null = null;
   let closedByCaller = false;
   let retryDelay = 1000;
@@ -94,7 +143,8 @@ export function subscribeToConversation(conversationId: string, onMessage: (mess
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "message" && data.message) onMessage(data.message as Message);
+        if (data.type === "message" && data.message) handlers.onMessage?.(data.message as Message);
+        if (data.type === "call" && data.call) handlers.onCallEvent?.(data.call as CallLog);
       } catch {
         /* ignore malformed frames */
       }

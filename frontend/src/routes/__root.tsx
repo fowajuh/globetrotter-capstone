@@ -17,6 +17,7 @@ import { themeInitScript, useTheme, applyTheme } from "../lib/theme-store";
 import { useBackendAuth } from "../lib/auth-store";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
   return (
@@ -178,6 +179,7 @@ function RootComponent() {
           </div>
         </AuthGate>
       )}
+      <Toaster position="top-center" />
     </QueryClientProvider>
   );
 }

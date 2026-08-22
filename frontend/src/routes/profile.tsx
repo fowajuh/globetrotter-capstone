@@ -1,21 +1,48 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useBackendAuth } from "@/lib/auth-store";
 import { api } from "@/lib/api-client";
+import { usersApi, type TravelStyle } from "@/lib/api/users";
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle2, ChevronRight, Settings, CreditCard, Bell, HelpCircle, LogOut } from "lucide-react";
+import { Shield, CheckCircle2, ChevronRight, Settings, CreditCard, Bell, HelpCircle, LogOut, Wallet, Backpack, Gem } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useTravel } from "@/lib/travel-store";
+import { useProfileBio } from "@/lib/profile-bio-store";
+import { EditBioSheet } from "@/components/profile/EditBioSheet";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/profile")({
   component: ProfileScreen,
 });
 
+const TRAVEL_STYLES: { value: TravelStyle; label: string; icon: React.ElementType }[] = [
+  { value: "shoestring", label: "Shoestring", icon: Backpack },
+  { value: "comfort", label: "Comfort", icon: Wallet },
+  { value: "luxury", label: "Luxury", icon: Gem },
+];
+
 function ProfileScreen() {
-  const { accessToken, userId, name, email, refreshToken, clear } = useBackendAuth();
+  const { name, email, refreshToken, clear } = useBackendAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"profile" | "account">("profile");
   const { myTrips } = useTravel();
+  const { bio, setBio } = useProfileBio();
+  const [bioSheetOpen, setBioSheetOpen] = useState(false);
+  const [draftName, setDraftName] = useState("");
+
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: usersApi.me, retry: false });
+
+  const updateProfile = useMutation({
+    mutationFn: usersApi.updateMe,
+    onSuccess: (user) => {
+      queryClient.setQueryData(["me"], user);
+      toast.success("Profile updated.");
+    },
+    onError: () => toast.error("Couldn't save that change — try again."),
+  });
 
   const handleLogout = async () => {
     try {
@@ -29,9 +56,10 @@ function ProfileScreen() {
   };
 
   // Derive display info from store
-  const displayName = name || email?.split('@')[0] || 'Traveler';
+  const displayName = meQuery.data?.name || name || email?.split('@')[0] || 'Traveler';
   const firstName = displayName.split(' ')[0];
   const initials = displayName.split(' ').map((p: string) => p[0]).join('').toUpperCase().slice(0, 2);
+  const travelStyle = meQuery.data?.travelStyle ?? null;
 
   return (
     <div className="min-h-screen bg-background pb-32">
@@ -126,10 +154,8 @@ function ProfileScreen() {
             {/* About */}
             <section>
               <h3 className="font-bold text-xl mb-4">About {firstName}</h3>
-              <p className="text-muted-foreground leading-relaxed">
-                Avid traveler looking for unique experiences. I love exploring off-the-beaten-path locations, trying local cuisine, and meeting new people.
-              </p>
-              <Button variant="outline" className="mt-4">Edit Intro</Button>
+              <p className="text-muted-foreground leading-relaxed">{bio}</p>
+              <Button variant="outline" className="mt-4" onClick={() => setBioSheetOpen(true)}>Edit Intro</Button>
             </section>
 
           </motion.div>
@@ -159,7 +185,7 @@ function ProfileScreen() {
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" />
               </Link>
-              <Link to="/settings" className="flex items-center justify-between p-4 hover:bg-muted transition-colors group cursor-pointer">
+              <Link to="/help" className="flex items-center justify-between p-4 hover:bg-muted transition-colors group cursor-pointer">
                 <div className="flex items-center gap-3">
                   <HelpCircle className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
                   <span className="font-medium">Help center</span>
@@ -168,11 +194,49 @@ function ProfileScreen() {
               </Link>
             </div>
 
-            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-              <div className="p-4">
-                <p className="text-sm text-muted-foreground">Account management coming soon.</p>
-                <p className="text-sm text-muted-foreground mt-1">Email: <span className="font-medium text-foreground">{email}</span></p>
+            {/* Real account management: name + travel style, PATCH /users/me */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm p-5 space-y-5">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Display name</label>
+                <div className="flex gap-2 mt-1.5">
+                  <input
+                    defaultValue={displayName}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    placeholder={displayName}
+                    className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-foreground transition-colors"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!draftName.trim() || draftName.trim() === displayName || updateProfile.isPending}
+                    onClick={() => updateProfile.mutate({ name: draftName.trim() })}
+                  >
+                    Save
+                  </Button>
+                </div>
               </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Travel style</label>
+                <div className="grid grid-cols-3 gap-2 mt-1.5">
+                  {TRAVEL_STYLES.map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => updateProfile.mutate({ travelStyle: value })}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-colors",
+                        travelStyle === value ? "border-foreground bg-muted" : "border-border hover:border-foreground/40",
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-sm text-muted-foreground pt-1 border-t border-border">
+                Email: <span className="font-medium text-foreground">{email}</span>
+              </p>
             </div>
 
             <div className="pt-4 pb-8 flex justify-center">
@@ -187,6 +251,8 @@ function ProfileScreen() {
           </motion.div>
         )}
       </main>
+
+      <EditBioSheet open={bioSheetOpen} onClose={() => setBioSheetOpen(false)} bio={bio} onSave={setBio} />
     </div>
   );
 }

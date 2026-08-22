@@ -35,6 +35,10 @@ type TravelState = {
   setPendingBooking: (b: PendingBooking) => void;
   
   addBooking: (listing: Listing, checkin: string, checkout: string, guests: number, total: number) => string;
+  addFunds: (amount: number) => void;
+  withdraw: (amount: number) => boolean;
+  redeemPromo: (code: string) => { success: boolean; amount?: number };
+  redeemedPromoCodes: string[];
 };
 
 export const useTravel = create<TravelState>()(
@@ -50,6 +54,7 @@ export const useTravel = create<TravelState>()(
       ],
       myTrips: initialTrips,
       pendingBooking: null,
+      redeemedPromoCodes: [],
 
       setPendingBooking: (b) => set({ pendingBooking: b }),
       
@@ -104,7 +109,54 @@ export const useTravel = create<TravelState>()(
         }));
         
         return tripId;
-      }
+      },
+
+      addFunds: (amount) => {
+        if (amount <= 0) return;
+        const tx: Transaction = {
+          id: `tx-${Math.random().toString(36).slice(2, 9)}`,
+          date: new Date().toISOString(),
+          description: "Added funds",
+          amount,
+          type: "credit",
+        };
+        set((state) => ({ walletBalance: state.walletBalance + amount, transactions: [tx, ...state.transactions] }));
+      },
+
+      withdraw: (amount) => {
+        if (amount <= 0 || amount > get().walletBalance) return false;
+        const tx: Transaction = {
+          id: `tx-${Math.random().toString(36).slice(2, 9)}`,
+          date: new Date().toISOString(),
+          description: "Withdrawal to bank",
+          amount,
+          type: "debit",
+        };
+        set((state) => ({ walletBalance: state.walletBalance - amount, transactions: [tx, ...state.transactions] }));
+        return true;
+      },
+
+      redeemPromo: (code) => {
+        const normalized = code.trim().toUpperCase();
+        if (!normalized) return { success: false };
+        if (get().redeemedPromoCodes.includes(normalized)) return { success: false };
+        // No real promo catalog on the backend yet — any code works once,
+        // same trust level as the rest of this demo wallet.
+        const amount = 15;
+        const tx: Transaction = {
+          id: `tx-${Math.random().toString(36).slice(2, 9)}`,
+          date: new Date().toISOString(),
+          description: `Promo code ${normalized}`,
+          amount,
+          type: "credit",
+        };
+        set((state) => ({
+          walletBalance: state.walletBalance + amount,
+          transactions: [tx, ...state.transactions],
+          redeemedPromoCodes: [...state.redeemedPromoCodes, normalized],
+        }));
+        return { success: true, amount };
+      },
     }),
     { name: "globetrotter-travel" },
   ),

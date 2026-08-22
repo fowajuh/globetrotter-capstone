@@ -137,6 +137,7 @@ model Conversation {
   updatedAt      DateTime @updatedAt
 
   messages Message[]
+  calls    CallLog[]
 
   @@unique([userId, listingId])
 }
@@ -149,8 +150,42 @@ model Message {
   senderId       String?
   sender         User?        @relation(fields: [senderId], references: [id])
   senderRole     String
+  // "text" | "voice" | "image" | "file" | "call" — see message.dto.ts.
+  // Kept as a plain string (not an enum) so new types don't need a migration.
+  type           String       @default("text")
   body           String
+  // Data URL for voice/image/file payloads (Stage 1 has no object storage —
+  // see main.ts body-size limit bump for why this is viable short-term).
+  mediaUrl       String?
+  mediaMimeType  String?
+  mediaDurationSec Int?
+  fileName       String?
+  fileSizeBytes  Int?
+  // Set only when type === "call"; mirrors the terminal CallLog row so the
+  // chat bubble doesn't need a join to render "Voice call · 2:14".
+  callStatus     String?
+  callDurationSec Int?
   readAt         DateTime?
+  createdAt      DateTime     @default(now())
+}
+
+// A simulated voice call against a listing's host, mirroring how host chat
+// replies are simulated: no real telephony/WebRTC peer, but a real,
+// persisted, server-timed call lifecycle so the UI never fakes state the
+// backend doesn't also believe. See calls.service.ts.
+model CallLog {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // "ringing" -> "active" -> "ended" | "no_answer"
+  status         String       @default("ringing")
+  startedAt      DateTime     @default(now())
+  connectedAt    DateTime?
+  endedAt        DateTime?
+  durationSec    Int?
+  // The Message row created once the call reaches a terminal state, so the
+  // thread shows a "Voice call" bubble. Null while the call is in flight.
+  messageId      String?      @unique
   createdAt      DateTime     @default(now())
 }
 

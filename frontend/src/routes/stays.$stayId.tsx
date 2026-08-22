@@ -4,6 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Heart, Share, Star, Wifi, Coffee, Car, Shield, CheckCircle, Zap, MessageSquare, Sparkles, X, Users, Minus, Plus } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { getListing, listings, reviewsFor, type Listing } from "@/lib/cameroon-data";
+import { hostSlug } from "@/lib/host-utils";
+import { formatMoney } from "@/lib/currency";
+import { useHomeCurrency } from "@/lib/use-home-currency";
 import { useTravel } from "@/lib/travel-store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -71,6 +74,8 @@ function StayDetail() {
   const [amenitiesExpanded, setAmenitiesExpanded] = useState(false);
 
   const nights = nightsBetween(checkin, checkout);
+  const homeCurrency = useHomeCurrency();
+  const fmt = (usd: number) => formatMoney(usd, homeCurrency);
   const reviews = reviewsFor(listing.id, userReviews);
 
   const handleReserve = () => {
@@ -189,7 +194,7 @@ function StayDetail() {
             <div className="lg:hidden mb-8">
               <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
                 <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-2xl font-bold">${listing.usd}</span>
+                  <span className="text-2xl font-bold">{fmt(listing.usd)}</span>
                   <span className="text-muted-foreground">night</span>
                 </div>
 
@@ -225,20 +230,20 @@ function StayDetail() {
 
                 <div className="mt-4 pt-4 border-t border-border space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">${listing.usd} × {nights} night{nights > 1 ? "s" : ""}</span>
-                    <span>${listing.usd * nights}</span>
+                    <span className="text-muted-foreground">{fmt(listing.usd)} × {nights} night{nights > 1 ? "s" : ""}</span>
+                    <span>{fmt(listing.usd * nights)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Cleaning fee</span>
-                    <span>$45</span>
+                    <span>{fmt(45)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Service fee</span>
-                    <span>${Math.round(listing.usd * nights * 0.14)}</span>
+                    <span>{fmt(Math.round(listing.usd * nights * 0.14))}</span>
                   </div>
                   <div className="flex justify-between font-bold text-base pt-2 border-t border-border">
                     <span>Total</span>
-                    <span>${listing.usd * nights + 45 + Math.round(listing.usd * nights * 0.14)}</span>
+                    <span>{fmt(listing.usd * nights + 45 + Math.round(listing.usd * nights * 0.14))}</span>
                   </div>
                 </div>
               </div>
@@ -246,14 +251,28 @@ function StayDetail() {
 
             <div className="flex justify-between items-start pb-6 border-b border-border">
               <div>
-                <h2 className="text-h2 mb-1">Entire place hosted by {listing.host.name}</h2>
+                <h2 className="text-h2 mb-1">
+                  Entire place hosted by{" "}
+                  <Link
+                    to="/hosts/$hostSlug"
+                    params={{ hostSlug: hostSlug(listing.host.name) }}
+                    className="underline decoration-1 underline-offset-2 hover:text-primary transition-colors"
+                  >
+                    {listing.host.name}
+                  </Link>
+                </h2>
                 <p className="text-muted-foreground">
                   {listing.guests} guests • {listing.bedrooms} bedrooms • {listing.beds} beds • {listing.baths} baths
                 </p>
               </div>
-              <div className="w-14 h-14 rounded-full bg-primary text-white flex items-center justify-center text-xl font-semibold shadow-card shrink-0">
+              <Link
+                to="/hosts/$hostSlug"
+                params={{ hostSlug: hostSlug(listing.host.name) }}
+                aria-label={`View ${listing.host.name}'s host profile`}
+                className="w-14 h-14 rounded-full bg-primary text-white flex items-center justify-center text-xl font-semibold shadow-card shrink-0 hover:scale-105 transition-transform"
+              >
                 {listing.host.initials}
-              </div>
+              </Link>
             </div>
 
             <div className="py-6 border-b border-border space-y-6">
@@ -360,7 +379,7 @@ function StayDetail() {
                         <span>{l.rating.toFixed(2)}</span>
                       </div>
                     </div>
-                    <p className="text-sm mt-1"><span className="font-semibold">${l.usd}</span> <span className="text-muted-foreground">night</span></p>
+                    <p className="text-sm mt-1"><span className="font-semibold">{fmt(l.usd)}</span> <span className="text-muted-foreground">night</span></p>
                   </Link>
                 ))}
               </div>
@@ -371,7 +390,7 @@ function StayDetail() {
           <div className="hidden lg:block lg:w-[40%]">
             <div id="book" className="sticky top-28 bg-card border border-border shadow-modal rounded-modal p-6 scroll-mt-24">
               <div className="flex items-baseline gap-1 mb-6">
-                <span className="text-2xl font-bold">${listing.usd}</span>
+                <span className="text-2xl font-bold">{fmt(listing.usd)}</span>
                 <span className="text-muted-foreground">night</span>
               </div>
 
@@ -486,20 +505,20 @@ function StayDetail() {
 
               <div className="mt-6 pt-6 border-t border-border space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">${listing.usd} × {nights} night{nights > 1 ? "s" : ""}</span>
-                  <span>${listing.usd * nights}</span>
+                  <span className="text-muted-foreground">{fmt(listing.usd)} × {nights} night{nights > 1 ? "s" : ""}</span>
+                  <span>{fmt(listing.usd * nights)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cleaning fee</span>
-                  <span>$45</span>
+                  <span>{fmt(45)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Service fee</span>
-                  <span>${Math.round(listing.usd * nights * 0.14)}</span>
+                  <span>{fmt(Math.round(listing.usd * nights * 0.14))}</span>
                 </div>
                 <div className="flex justify-between font-bold text-base pt-3 border-t border-border">
                   <span>Total before taxes</span>
-                  <span>${listing.usd * nights + 45 + Math.round(listing.usd * nights * 0.14)}</span>
+                  <span>{fmt(listing.usd * nights + 45 + Math.round(listing.usd * nights * 0.14))}</span>
                 </div>
               </div>
             </div>
@@ -512,7 +531,7 @@ function StayDetail() {
         <div className="flex justify-between items-center p-4">
           <div>
             <div className="flex items-baseline gap-1">
-              <span className="font-bold text-lg">${listing.usd}</span>
+              <span className="font-bold text-lg">{fmt(listing.usd)}</span>
               <span className="text-sm text-muted-foreground">night</span>
             </div>
             <p className="text-xs text-muted-foreground">{formatDatePretty(checkin)} – {formatDatePretty(checkout)}</p>
