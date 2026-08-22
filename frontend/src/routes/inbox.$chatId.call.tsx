@@ -12,7 +12,7 @@ export const Route = createFileRoute("/inbox/$chatId/call")({
   component: CallScreen,
 });
 
-type Phase = "connecting" | "ringing" | "active" | "ended" | "no_answer";
+type Phase = "connecting" | "ringing" | "active" | "ended" | "no_answer" | "failed";
 
 const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
@@ -63,11 +63,15 @@ function CallScreen() {
     setConnectedAt(call.connectedAt ? new Date(call.connectedAt).getTime() : null);
   };
 
-  // Start the call the moment the screen opens.
+  // Start the call the moment the screen opens. A failed request (backend
+  // unreachable, endpoint not deployed yet, etc.) is a distinct state from
+  // a legitimate unanswered ring — conflating the two as "no answer" makes
+  // a broken deployment look identical to a normal missed call, which is
+  // undiagnosable. See "failed" below.
   const startMutation = useMutation({
     mutationFn: () => callsApi.start(chatId),
     onSuccess: applyCall,
-    onError: () => setPhase("no_answer"),
+    onError: () => setPhase("failed"),
   });
   useEffect(() => {
     startMutation.mutate();
@@ -92,7 +96,9 @@ function CallScreen() {
     return () => clearInterval(id);
   }, [phase, connectedAt]);
 
-  // Terminal states auto-return to the thread after a beat.
+  // Terminal states auto-return to the thread after a beat. "failed" is
+  // deliberately excluded — the person gets Retry/Back instead of being
+  // swept back to the thread before they can tell what happened.
   useEffect(() => {
     if (phase !== "ended" && phase !== "no_answer") return;
     endedRef.current = true;
@@ -135,7 +141,9 @@ function CallScreen() {
           ? formatDuration(elapsed)
           : phase === "ended"
             ? "Call ended"
-            : "No answer";
+            : phase === "failed"
+              ? "Couldn't connect"
+              : "No answer";
 
   return (
     <div className="flex flex-col h-[100dvh] bg-departure-navy text-cloud-white overflow-hidden relative">
@@ -167,17 +175,44 @@ function CallScreen() {
         </div>
 
         <h1 className="font-display text-[28px] leading-tight text-center">{hostName}</h1>
-        <p className={cn("num text-[15px] mt-2 tabular-nums", phase === "no_answer" ? "text-runway-red" : "text-cloud-white/70")}>
+        <p className={cn("num text-[15px] mt-2 tabular-nums", (phase === "no_answer" || phase === "failed") ? "text-runway-red" : "text-cloud-white/70")}>
           {statusLabel}
         </p>
         {convo?.listingTitle && phase !== "active" && (
           <p className="text-xs text-cloud-white/40 mt-1 text-center max-w-[70vw] truncate">{convo.listingTitle}</p>
         )}
+        {phase === "failed" && (
+          <p className="text-xs text-cloud-white/50 mt-3 text-center max-w-[75vw]">
+            We couldn't reach the host. Check your connection, or the calling service may still be deploying.
+          </p>
+        )}
       </div>
 
       {/* Controls */}
       <div className="relative shrink-0 pb-safe pb-10 px-8">
-        {canUseControls && (
+        {phase === "failed" ? (
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/inbox/$chatId", params: { chatId }, replace: true })}
+              className="px-6 py-3 rounded-full bg-white/10 text-cloud-white text-sm font-medium hover:bg-white/15 transition-colors"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPhase("connecting");
+                startMutation.mutate();
+              }}
+              className="px-6 py-3 rounded-full bg-beacon-amber text-departure-navy text-sm font-semibold hover:bg-beacon-amber/90 transition-colors"
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <>
+            {canUseControls && (
           <div className="flex items-center justify-center gap-6 mb-9">
             <button
               type="button"
@@ -226,6 +261,8 @@ function CallScreen() {
             <PhoneOff className="w-6 h-6" />
           </button>
         </div>
+          </>
+        )}
       </div>
 
       <Sheet open={keypadOpen} onOpenChange={setKeypadOpen}>

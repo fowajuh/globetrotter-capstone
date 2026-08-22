@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { ChevronLeft, Send, Phone } from "lucide-react";
+import { ChevronLeft, Send, Phone, Mic } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -10,7 +10,8 @@ import {
   type Message,
   type SendMessagePayload,
 } from "@/lib/api/messages";
-import { VoiceRecorder } from "@/components/messaging/VoiceRecorder";
+import { useVoiceRecorder } from "@/components/messaging/useVoiceRecorder";
+import { VoiceRecordingBar } from "@/components/messaging/VoiceRecordingBar";
 import { VoiceMessageBubble } from "@/components/messaging/VoiceMessageBubble";
 import { ImageMessageBubble, FileMessageBubble } from "@/components/messaging/AttachmentMessageBubble";
 import { CallMessageBubble } from "@/components/messaging/CallMessageBubble";
@@ -192,6 +193,8 @@ function ChatScreen() {
 
   const goToCallScreen = () => navigate({ to: "/inbox/$chatId/call", params: { chatId } });
 
+  const voice = useVoiceRecorder({ onSend: handleSendVoice, onError: (msg) => toast.error(msg) });
+
   const convo = conversationQuery.data;
   const dayLabel = messages[0] ? formatDayLabel(messages[0].createdAt) : null;
 
@@ -250,8 +253,13 @@ function ChatScreen() {
 
         {messages.map((msg) => {
           const isUser = msg.senderRole === "user";
+          // Defensive: if the deployed backend predates this schema (or a
+          // future type we don't know about yet), `type` can be missing or
+          // unrecognized. Never let that render a blank bubble — text with
+          // whatever body we have beats an invisible message.
+          const kind = msg.type === "voice" || msg.type === "image" || msg.type === "file" || msg.type === "call" ? msg.type : "text";
 
-          if (msg.type === "call") {
+          if (kind === "call") {
             return (
               <div key={msg.id} className={cn("flex flex-col", isUser ? "self-end items-end" : "self-start items-start")}>
                 <CallMessageBubble status={msg.callStatus} durationSec={msg.callDurationSec} isUser={isUser} onCallBack={goToCallScreen} />
@@ -264,20 +272,19 @@ function ChatScreen() {
             <div key={msg.id} className={cn("flex flex-col max-w-[75%]", isUser ? "self-end items-end" : "self-start items-start")}>
               <div
                 className={cn(
-                  "rounded-2xl text-[15px]",
-                  msg.type === "text" && "px-4 py-2.5",
-                  msg.type === "voice" && "px-3 py-2.5",
-                  msg.type === "image" && "p-1",
-                  msg.type === "file" && "p-1.5",
+                  "rounded-2xl text-[15px] leading-relaxed shadow-sm",
+                  kind === "text" && "px-4 py-2.5",
+                  kind === "voice" && "px-3 py-2.5",
+                  kind === "image" && "p-1",
+                  kind === "file" && "p-1.5",
                   isUser ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm",
                 )}
               >
-                {msg.type === "text" && msg.body}
-                {msg.type === "voice" && msg.mediaUrl && (
+                {kind === "voice" && msg.mediaUrl ? (
                   <VoiceMessageBubble mediaUrl={msg.mediaUrl} durationSec={msg.mediaDurationSec ?? 0} isUser={isUser} />
-                )}
-                {msg.type === "image" && msg.mediaUrl && <ImageMessageBubble mediaUrl={msg.mediaUrl} />}
-                {msg.type === "file" && msg.mediaUrl && msg.fileName && (
+                ) : kind === "image" && msg.mediaUrl ? (
+                  <ImageMessageBubble mediaUrl={msg.mediaUrl} />
+                ) : kind === "file" && msg.mediaUrl && msg.fileName ? (
                   <FileMessageBubble
                     mediaUrl={msg.mediaUrl}
                     fileName={msg.fileName}
@@ -285,6 +292,8 @@ function ChatScreen() {
                     mediaMimeType={msg.mediaMimeType}
                     isUser={isUser}
                   />
+                ) : (
+                  msg.body || <span className="opacity-60 italic">Empty message</span>
                 )}
               </div>
               <span className="text-[10px] text-muted-foreground mt-1 mx-1">{formatTime(msg.createdAt)}</span>
@@ -295,28 +304,43 @@ function ChatScreen() {
       </main>
 
       {/* Input Area */}
-      <footer className="p-4 bg-background border-t border-border shrink-0">
-        <form onSubmit={handleSend} className="flex items-end gap-1 bg-muted p-2 rounded-3xl border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
-          <AttachmentPicker onPickImage={handlePickImage} onPickFile={handlePickFile} disabled={sending} />
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 bg-transparent border-none outline-none max-h-32 py-2.5 text-[15px] min-w-0"
-          />
-          {inputText.trim() ? (
-            <button
-              type="submit"
-              disabled={sending}
-              className="p-2.5 bg-primary text-primary-foreground rounded-full disabled:opacity-50 shrink-0 transition-all hover:scale-105 active:scale-95"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          ) : (
-            <VoiceRecorder onSend={handleSendVoice} onError={(msg) => toast.error(msg)} disabled={sending} />
-          )}
-        </form>
+      <footer className="px-3 py-3 bg-background border-t border-border shrink-0">
+        {voice.recording ? (
+          <VoiceRecordingBar seconds={voice.seconds} levels={voice.levels} onCancel={voice.cancel} onSend={voice.stop} />
+        ) : (
+          <form onSubmit={handleSend} className="flex items-center gap-2">
+            <div className="flex items-center gap-0.5 flex-1 min-w-0 bg-muted rounded-full pl-1.5 pr-1 h-11 border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+              <AttachmentPicker onPickImage={handlePickImage} onPickFile={handlePickFile} disabled={sending} />
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 bg-transparent border-none outline-none text-[15px] min-w-0 h-full"
+              />
+            </div>
+            {inputText.trim() ? (
+              <button
+                type="submit"
+                disabled={sending}
+                aria-label="Send message"
+                className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center bg-primary text-primary-foreground shadow-sm disabled:opacity-50 transition-transform hover:scale-105 active:scale-95"
+              >
+                <Send className="w-[18px] h-[18px]" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={voice.start}
+                disabled={sending}
+                aria-label="Record a voice note"
+                className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center bg-primary text-primary-foreground shadow-sm disabled:opacity-50 transition-transform hover:scale-105 active:scale-95"
+              >
+                <Mic className="w-[18px] h-[18px]" />
+              </button>
+            )}
+          </form>
+        )}
       </footer>
     </div>
   );
