@@ -17,3 +17,5 @@ generator/__pycache__/
 
 backend/.env
 
+.vercel
+.env*
